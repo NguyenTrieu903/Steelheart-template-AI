@@ -1,0 +1,28 @@
+{
+  "apiKey": "${GEMINI_API_KEY}",
+  "model": "${GEMINI_MODEL:-gemini-2.0-flash-exp}",
+  "temperature": 0.7,
+  "topP": 0.8,
+  "timeout": 30000,
+  "retryAttempts": 3,
+  "logLevel": "info",
+  "outputFormats": ["json", "markdown"],
+  "features": {
+    "codeReview": {
+      "enabled": true,
+      "severity": ["critical", "warning", "info"],
+      "categories": ["bug", "security", "performance", "style", "maintainability"]
+    },
+    "documentation": {
+      "enabled": true,
+      "sections": ["overview", "installation", "usage", "api", "examples", "configuration"],
+      "generateReadme": true
+    },
+    "testing": {
+      "enabled": true,
+      "frameworks": ["jest", "mocha", "vitest"],
+      "types": ["unit", "integration"],
+      "generateRunner": true
+    }
+  }
+}
