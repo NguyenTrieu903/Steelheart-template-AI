@@ -3,6 +3,7 @@
 ## What's New in v1.2.0
 
 ✨ **New Features:**
+
 - 📋 **Branch Documentation**: Generate docs for specific Git branch changes
 - 💬 **Auto-Comment**: Add AI-generated comments to your code
 - 🔍 **Enhanced Git Integration**: Better branch detection and diff analysis
@@ -22,6 +23,7 @@ steelheart setup
 ## Complete Command Reference
 
 ### 1. Smart Auto-Review (Main Feature)
+
 ```bash
 # Auto-review current project in any directory
 cd ~/my-project
@@ -32,6 +34,7 @@ steelheart auto-review -o ./reports
 ```
 
 ### 2. Branch Documentation (NEW!)
+
 ```bash
 # Generate documentation for current branch changes
 steelheart branch-docs
@@ -44,6 +47,7 @@ steelheart branch-docs -o ./docs -f markdown
 ```
 
 ### 3. Auto-Comment Code (NEW!)
+
 ```bash
 # Preview what comments would be added (safe)
 steelheart auto-comment --dry-run
@@ -59,6 +63,7 @@ steelheart auto-comment -b main --dry-run
 ```
 
 ### 4. Traditional Commands
+
 ```bash
 # Full code review
 steelheart review
@@ -143,26 +148,26 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Important for branch comparisons
-          
+          fetch-depth: 0 # Important for branch comparisons
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
-          
+          node-version: "18"
+
       - name: Install Steelheart AI
         run: npm install -g steelheart-ai@1.2.0
-        
+
       - name: Auto-Review Changes
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: steelheart auto-review
-        
+
       - name: Generate Branch Documentation
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: steelheart branch-docs -b main
-        
+
       - name: Upload Reports
         uses: actions/upload-artifact@v3
         with:
@@ -223,45 +228,51 @@ echo "✅ AI review passed!"
 ## Output Examples
 
 ### Branch Documentation Output
+
 ```markdown
 # Branch Documentation: feature/user-authentication
 
 ## Summary of Changes
+
 This branch implements comprehensive user authentication...
 
 ## Files Modified
+
 - src/components/LoginForm.tsx (+45 -0): New login form component
 - src/hooks/useAuth.ts (+38 -0): Authentication state management
 - src/services/authAPI.ts (+67 -0): Authentication API service
 
 ## Breaking Changes
+
 ⚠️ Protected routes now require authentication
 
 ## Testing Recommendations
+
 1. Test registration with valid/invalid emails
 2. Verify session persistence
 3. Check logout functionality
 ```
 
 ### Auto-Comment Output
+
 ```typescript
 // Before:
 const handleLogin = async (email, password) => {
-  const response = await api.post('/auth/login', { email, password });
+  const response = await api.post("/auth/login", { email, password });
   return response.data;
 };
 
 // After:
 /**
  * Authenticate user with email and password
- * @param {string} email - User's email address  
+ * @param {string} email - User's email address
  * @param {string} password - User's password
  * @returns {Promise<AuthResponse>} Authentication response with user data and token
  */
 const handleLogin = async (email, password) => {
   // Send authentication request to backend API
-  const response = await api.post('/auth/login', { email, password });
-  
+  const response = await api.post("/auth/login", { email, password });
+
   // Return authentication data (user info + JWT token)
   return response.data;
 };
@@ -272,21 +283,27 @@ const handleLogin = async (email, password) => {
 ### Common Issues
 
 **No Git repository**
+
 ```bash
 Error: Not a Git repository!
 ```
+
 Solution: Run commands in a Git repository or initialize one with `git init`
 
 **No API key**
+
 ```bash
 ❌ Gemini API key not found!
 ```
+
 Solution: Run `steelheart setup` or set `GEMINI_API_KEY` environment variable
 
 **No branch changes**
+
 ```bash
 No changes found between main and current-branch
 ```
+
 Solution: Make sure you have commits on your feature branch, or specify different base branch with `-b`
 
 ### Getting Help
@@ -309,4 +326,4 @@ Found a bug or have a feature request? We'd love to hear from you!
 
 **Made with ❤️ using Google Gemini AI**
 
-*Steelheart AI v1.2.0 - Making code review and documentation intelligent and effortless.*
+_Steelheart AI v1.2.0 - Making code review and documentation intelligent and effortless._

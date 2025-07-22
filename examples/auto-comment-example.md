@@ -1,15 +1,16 @@
 // Example: Before and After Auto-Commenting
 
 // BEFORE (Original Code):
+
 ```typescript
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem("token");
     if (token) {
-      verifyToken(token).then(userData => {
+      verifyToken(token).then((userData) => {
         setUser(userData);
         setLoading(false);
       });
@@ -21,7 +22,7 @@ export const useAuth = () => {
   const login = async (email, password) => {
     try {
       const response = await authAPI.login(email, password);
-      localStorage.setItem('token', response.token);
+      localStorage.setItem("token", response.token);
       setUser(response.user);
       return { success: true };
     } catch (error) {
@@ -34,6 +35,7 @@ export const useAuth = () => {
 ```
 
 // AFTER (Auto-Commented Code):
+
 ```typescript
 /**
  * Custom hook for managing user authentication state and operations
@@ -42,18 +44,18 @@ export const useAuth = () => {
 export const useAuth = () => {
   // Current authenticated user data, null if not logged in
   const [user, setUser] = useState(null);
-  
+
   // Loading state for initial authentication check
   const [loading, setLoading] = useState(true);
 
   // Effect: Check for existing authentication token on mount
   useEffect(() => {
     // Retrieve stored authentication token from localStorage
-    const token = localStorage.getItem('token');
-    
+    const token = localStorage.getItem("token");
+
     if (token) {
       // Verify token validity and get user data
-      verifyToken(token).then(userData => {
+      verifyToken(token).then((userData) => {
         setUser(userData);
         setLoading(false);
       });
@@ -73,13 +75,13 @@ export const useAuth = () => {
     try {
       // Call authentication API with credentials
       const response = await authAPI.login(email, password);
-      
+
       // Store JWT token in localStorage for persistence
-      localStorage.setItem('token', response.token);
-      
+      localStorage.setItem("token", response.token);
+
       // Update user state with authenticated user data
       setUser(response.user);
-      
+
       return { success: true };
     } catch (error) {
       // Return error details for UI feedback
