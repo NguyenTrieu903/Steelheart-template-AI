@@ -1,6 +1,6 @@
 {
   "name": "steelheart-ai",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "AI-powered code review, documentation generation, and testing toolkit using Gemini AI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
