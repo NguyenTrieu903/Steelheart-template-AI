@@ -37,6 +37,8 @@ npm install --save-dev steelheart-ai
 - 🌿 **Git Integration**: Branch-aware analysis and reporting
 - 🎯 **Project Detection**: Auto-detect project type (Node.js, Python, Rust, Go, etc.)
 - 📦 **CLI & Library**: Use as command-line tool or integrate into your workflow
+- 📋 **Branch Documentation**: Generate docs for specific branch changes
+- 💬 **Auto-Comment**: Add AI-generated comments to your code
 
 ## 🎯 Usage Examples
 
@@ -48,6 +50,12 @@ steelheart auto-review
 
 # Full code review
 steelheart review
+
+# Generate documentation for branch changes
+steelheart branch-docs
+
+# Auto-add comments to code
+steelheart auto-comment
 
 # Generate documentation
 steelheart docs
@@ -123,6 +131,61 @@ steelheart auto-review
 # Report saved to: ./steelheart-output
 # 
 # 💡 Some improvements suggested. Consider reviewing.
+```
+
+### Advanced Features - Branch Documentation & Auto-Comments
+
+```bash
+# Navigate to any project with Git branches
+cd ~/my-react-project
+
+# Generate documentation for current branch changes
+steelheart branch-docs
+
+# Output:
+# 🚀 Steelheart AI - AI-powered development toolkit
+# 
+# 📋 Branch Documentation Generator
+# 🌿 Current Branch: feature/authentication
+# 🔗 Base Branch: main
+# 📝 Changed Files: 6
+# ➕ Insertions: 147
+# ➖ Deletions: 23
+# 
+# 📋 Branch Documentation Summary:
+# Branch: feature/authentication
+# Commits: 4
+# Files changed: 6
+# Documentation saved to: ./steelheart-output/branch-feature-authentication-docs.md
+
+# Auto-add intelligent comments to your code
+steelheart auto-comment --dry-run
+
+# Output shows what comments would be added:
+# 💬 Auto-Comment Generator
+# 🌿 Current Branch: feature/authentication
+# 📝 Files to process: 4
+# 
+# 📝 Comments for src/components/LoginForm.tsx:
+# Would add comments explaining authentication logic, form validation, and error handling
+# 
+# 📝 Comments for src/hooks/useAuth.ts:
+# Would add comments explaining custom hook logic, state management, and API calls
+# 
+# 🔍 This was a dry run. Use without --dry-run to apply changes.
+
+# Actually apply the comments (with backup)
+steelheart auto-comment --backup
+
+# Output:
+# 💾 Backup saved: src/components/LoginForm.tsx.backup
+# ✅ Comments added to: src/components/LoginForm.tsx
+# 💾 Backup saved: src/hooks/useAuth.ts.backup
+# ✅ Comments added to: src/hooks/useAuth.ts
+# 
+# 💬 Auto-Comment Summary:
+# Files processed: 4/4
+# Comments added: 23
 ```
 
 ## Template Structure

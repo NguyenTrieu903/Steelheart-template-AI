@@ -14,6 +14,14 @@ import { ensureDirSync } from "fs-extra";
 import * as dotenv from "dotenv";
 import simpleGit from "simple-git";
 
+// Types for auto-commenting results
+interface CommentResult {
+  file: string;
+  commentsAdded?: number;
+  success: boolean;
+  error?: any;
+}
+
 // Load environment variables
 dotenv.config();
 
@@ -107,10 +115,177 @@ const detectProjectType = (repoPath: string) => {
   return 'Unknown';
 };
 
+// Enhanced Git utilities for branch changes and documentation
+const getBranchChanges = async (repoPath: string, baseBranch: string = 'main') => {
+  try {
+    const git = simpleGit(repoPath);
+    const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+    
+    // Get commits between base branch and current branch
+    const commits = await git.log([`${baseBranch}..${currentBranch.trim()}`]);
+    
+    // Get file changes (diff)
+    const diffSummary = await git.diffSummary([`${baseBranch}...${currentBranch.trim()}`]);
+    
+    // Get actual diff content
+    const diffContent = await git.diff([`${baseBranch}...${currentBranch.trim()}`]);
+    
+    return {
+      currentBranch: currentBranch.trim(),
+      baseBranch,
+      commits: commits.all,
+      changedFiles: diffSummary.files,
+      diffContent,
+      totalInsertions: diffSummary.insertions,
+      totalDeletions: diffSummary.deletions,
+      totalChanges: diffSummary.changed
+    };
+  } catch (error) {
+    console.warn('Could not get branch changes:', error);
+    return null;
+  }
+};
+
+const getFileChanges = async (repoPath: string, filePath: string, baseBranch: string = 'main') => {
+  try {
+    const git = simpleGit(repoPath);
+    const currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+    
+    // Get diff for specific file
+    const diff = await git.diff([`${baseBranch}...${currentBranch.trim()}`, '--', filePath]);
+    
+    return {
+      filePath,
+      diff,
+      hasChanges: diff.length > 0
+    };
+  } catch (error) {
+    return {
+      filePath,
+      diff: '',
+      hasChanges: false
+    };
+  }
+};
+
+// Helper functions for branch documentation and auto-commenting
+const generateBranchDocumentation = async (service: DocumentationService, branchChanges: any, repoPath: string): Promise<string> => {
+  const prompt = `Please generate comprehensive documentation for the following branch changes:
+
+Branch: ${branchChanges.currentBranch}
+Base Branch: ${branchChanges.baseBranch}
+Total Changes: ${branchChanges.totalChanges} files
+Insertions: ${branchChanges.totalInsertions}
+Deletions: ${branchChanges.totalDeletions}
+
+Commits:
+${branchChanges.commits.map((commit: any) => `- ${commit.hash.substring(0, 8)}: ${commit.message}`).join('\n')}
+
+Changed Files:
+${branchChanges.changedFiles.map((file: any) => `- ${file.file} (+${file.insertions} -${file.deletions})`).join('\n')}
+
+Diff Content (first 2000 chars):
+${branchChanges.diffContent.substring(0, 2000)}
+
+Please create documentation that includes:
+1. Summary of changes
+2. Purpose and impact of changes
+3. Files modified and their significance
+4. Any breaking changes or important notes
+5. Testing recommendations
+
+Format as markdown documentation.`;
+
+  const systemInstruction = `You are a technical documentation expert. Generate clear, comprehensive documentation for Git branch changes that helps team members understand what was modified and why.`;
+
+  try {
+    const content = await service['geminiClient'].generateContent(prompt, systemInstruction);
+    return content;
+  } catch (error) {
+    console.warn('Failed to generate AI documentation, creating basic summary');
+    return `# Branch Documentation: ${branchChanges.currentBranch}
+
+## Summary
+Changes from ${branchChanges.baseBranch} to ${branchChanges.currentBranch}
+
+## Files Changed
+${branchChanges.changedFiles.map((file: any) => `- ${file.file}`).join('\n')}
+
+## Commits
+${branchChanges.commits.map((commit: any) => `- ${commit.message}`).join('\n')}
+`;
+  }
+};
+
+const generateCodeComments = async (filePath: string, diffContent: string): Promise<{content: string, commentsAdded: number, preview: string}> => {
+  try {
+    const originalContent = readFileSync(filePath, 'utf8');
+    const fileExtension = filePath.split('.').pop()?.toLowerCase();
+    
+    const prompt = `Please analyze this code file and its changes, then add helpful comments to explain the logic, especially for the changed parts:
+
+File: ${filePath}
+Language: ${fileExtension}
+
+Changes (diff):
+${diffContent}
+
+Original Code:
+${originalContent}
+
+Please add comments that:
+1. Explain complex logic or algorithms
+2. Clarify the purpose of functions and classes
+3. Document parameters and return values
+4. Explain business logic or domain-specific concepts
+5. Add TODO or NOTE comments where appropriate
+
+Return the complete file with added comments. Use appropriate comment syntax for ${fileExtension} files.
+Only add comments where they would be genuinely helpful - don't over-comment obvious code.
+
+Format your response as JSON:
+{
+  "commentedCode": "the complete file with added comments",
+  "commentsAdded": 5,
+  "summary": "brief summary of what comments were added"
+}`;
+
+    const systemInstruction = `You are a senior developer adding helpful comments to code. Add clear, concise comments that improve code readability and maintainability. Use the appropriate comment syntax for the programming language.`;
+
+    try {
+      // Use Gemini client to generate comments
+      const geminiClient = new (await import('./services/gemini-client')).GeminiClient();
+      const response = await geminiClient.generateContent(prompt, systemInstruction);
+      
+      // Try to parse JSON response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          content: parsed.commentedCode || originalContent,
+          commentsAdded: parsed.commentsAdded || 0,
+          preview: parsed.summary || `Added comments to ${filePath}`
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to generate AI comments, using preview mode');
+    }
+    
+    // Fallback: return preview without actual changes
+    return {
+      content: originalContent,
+      commentsAdded: 0,
+      preview: `Would add intelligent comments to ${filePath} explaining the logic in the diff changes`
+    };
+  } catch (error) {
+    throw new Error(`Failed to generate comments for ${filePath}: ${error}`);
+  }
+};
+
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("1.1.0");
+  .version("1.2.0");
 
 // Setup command
 program
@@ -295,6 +470,203 @@ program
       
     } catch (error) {
       spinner.fail("Smart review failed");
+      console.error(chalk.red("Error:"), error);
+      process.exit(1);
+    }
+  });
+
+// Branch documentation command
+program
+  .command("branch-docs")
+  .alias("bd")
+  .description("📋 Generate documentation for branch changes")
+  .option("-o, --output <dir>", "Output directory")
+  .option("-b, --base <branch>", "Base branch to compare against", "main")
+  .option("-f, --format <format>", "Output format (markdown|html|json)", "markdown")
+  .option("--commit-messages", "Include commit messages in documentation")
+  .action(async (options) => {
+    showBanner();
+    if (!validateApiKey()) return;
+
+    const repoPath = process.cwd();
+    const spinner = ora("Analyzing branch changes...").start();
+
+    try {
+      const outputDir = getOutputDir(options.output);
+      ensureDirSync(outputDir);
+
+      // Get Git information
+      const gitInfo = await getGitInfo(repoPath);
+      
+      if (!gitInfo.isGitRepo) {
+        spinner.fail("Not a Git repository!");
+        console.log(chalk.red("❌ This command requires a Git repository"));
+        return;
+      }
+
+      // Get branch changes
+      const branchChanges = await getBranchChanges(repoPath, options.base);
+      
+      if (!branchChanges || branchChanges.changedFiles.length === 0) {
+        spinner.warn("No changes found between branches");
+        console.log(chalk.yellow(`No changes found between ${options.base} and ${gitInfo.currentBranch}`));
+        return;
+      }
+
+      spinner.text = "Generating documentation for changes...";
+      
+      console.log(chalk.blue(`\n📋 Branch Documentation Generator`));
+      console.log(chalk.blue(`🌿 Current Branch: ${branchChanges.currentBranch}`));
+      console.log(chalk.blue(`🔗 Base Branch: ${branchChanges.baseBranch}`));
+      console.log(chalk.blue(`📝 Changed Files: ${branchChanges.changedFiles.length}`));
+      console.log(chalk.blue(`➕ Insertions: ${branchChanges.totalInsertions}`));
+      console.log(chalk.blue(`➖ Deletions: ${branchChanges.totalDeletions}`));
+
+      // Generate documentation using AI
+      const service = new DocumentationService();
+      const branchDocs = await generateBranchDocumentation(service, branchChanges, repoPath);
+
+      // Save documentation
+      const docPath = join(outputDir, `branch-${branchChanges.currentBranch}-docs.md`);
+      writeFileSync(docPath, branchDocs);
+
+      spinner.succeed("Branch documentation generated!");
+
+      console.log(chalk.blue("\n📋 Branch Documentation Summary:"));
+      console.log(`${chalk.gray("Branch:")} ${branchChanges.currentBranch}`);
+      console.log(`${chalk.gray("Commits:")} ${branchChanges.commits.length}`);
+      console.log(`${chalk.gray("Files changed:")} ${branchChanges.changedFiles.length}`);
+      console.log(`${chalk.gray("Documentation saved to:")} ${docPath}`);
+      
+    } catch (error) {
+      spinner.fail("Branch documentation generation failed");
+      console.error(chalk.red("Error:"), error);
+      process.exit(1);
+    }
+  });
+
+// Auto-comment code command
+program
+  .command("auto-comment")
+  .alias("ac")
+  .description("💬 Automatically add AI-generated comments to code")
+  .argument("[files...]", "Specific files to comment (default: all changed files)")
+  .option("-b, --base <branch>", "Base branch to compare against", "main")
+  .option("--backup", "Create backup files before commenting")
+  .option("--dry-run", "Show what comments would be added without modifying files")
+  .action(async (files: string[], options) => {
+    showBanner();
+    if (!validateApiKey()) return;
+
+    const repoPath = process.cwd();
+    const spinner = ora("Analyzing code for auto-commenting...").start();
+
+    try {
+      // Get Git information
+      const gitInfo = await getGitInfo(repoPath);
+      
+      if (!gitInfo.isGitRepo) {
+        spinner.fail("Not a Git repository!");
+        console.log(chalk.red("❌ This command requires a Git repository"));
+        return;
+      }
+
+      // Get files to process
+      let filesToProcess = files;
+      if (filesToProcess.length === 0) {
+        // Use changed files from git
+        const branchChanges = await getBranchChanges(repoPath, options.base);
+        if (branchChanges) {
+          filesToProcess = branchChanges.changedFiles
+            .filter(file => file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/))
+            .map(file => file.file);
+        }
+      }
+
+      if (filesToProcess.length === 0) {
+        spinner.warn("No files to comment");
+        console.log(chalk.yellow("No code files found to comment"));
+        return;
+      }
+
+      spinner.text = `Generating AI comments for ${filesToProcess.length} files...`;
+      
+      console.log(chalk.blue(`\n💬 Auto-Comment Generator`));
+      console.log(chalk.blue(`🌿 Current Branch: ${gitInfo.currentBranch}`));
+      console.log(chalk.blue(`📝 Files to process: ${filesToProcess.length}`));
+      
+      // Process each file
+      const results: CommentResult[] = [];
+      for (const filePath of filesToProcess) {
+        spinner.text = `Processing ${filePath}...`;
+        
+        try {
+          const fullPath = join(repoPath, filePath);
+          if (!existsSync(fullPath)) {
+            console.log(chalk.yellow(`⚠️  File not found: ${filePath}`));
+            continue;
+          }
+
+          const fileChanges = await getFileChanges(repoPath, filePath, options.base);
+          if (!fileChanges.hasChanges) {
+            console.log(chalk.gray(`ℹ️  No changes in: ${filePath}`));
+            continue;
+          }
+
+          const commentedCode = await generateCodeComments(fullPath, fileChanges.diff);
+          
+          if (options.dryRun) {
+            console.log(chalk.blue(`\n📝 Comments for ${filePath}:`));
+            console.log(commentedCode.preview);
+          } else {
+            // Create backup if requested
+            if (options.backup) {
+              const backupPath = `${fullPath}.backup`;
+              const originalContent = readFileSync(fullPath, 'utf8');
+              writeFileSync(backupPath, originalContent);
+              console.log(chalk.gray(`💾 Backup saved: ${backupPath}`));
+            }
+
+            // Write commented code
+            writeFileSync(fullPath, commentedCode.content);
+            console.log(chalk.green(`✅ Comments added to: ${filePath}`));
+          }
+
+          results.push({
+            file: filePath,
+            commentsAdded: commentedCode.commentsAdded,
+            success: true
+          });
+
+        } catch (error) {
+          console.log(chalk.red(`❌ Error processing ${filePath}: ${error}`));
+          results.push({
+            file: filePath,
+            error: error,
+            success: false
+          });
+        }
+      }
+
+      spinner.succeed("Auto-commenting completed!");
+
+      // Summary
+      const successful = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
+      const totalComments = successful.reduce((sum, r) => sum + (r.commentsAdded || 0), 0);
+
+      console.log(chalk.blue("\n💬 Auto-Comment Summary:"));
+      console.log(`${chalk.gray("Files processed:")} ${successful.length}/${results.length}`);
+      console.log(`${chalk.gray("Comments added:")} ${totalComments}`);
+      if (failed.length > 0) {
+        console.log(`${chalk.red("Failed:")} ${failed.length}`);
+      }
+      if (options.dryRun) {
+        console.log(chalk.yellow("\n🔍 This was a dry run. Use without --dry-run to apply changes."));
+      }
+      
+    } catch (error) {
+      spinner.fail("Auto-commenting failed");
       console.error(chalk.red("Error:"), error);
       process.exit(1);
     }
