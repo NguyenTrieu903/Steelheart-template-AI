@@ -124,22 +124,52 @@ const getBranchChanges = async (
     const git = simpleGit(repoPath);
     const currentBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
 
+    // Check if base branch exists, fallback to origin/main, origin/master, or HEAD~1
+    let actualBaseBranch = baseBranch;
+    try {
+      await git.revparse([`--verify`, `${baseBranch}`]);
+    } catch {
+      // Try remote branches
+      try {
+        await git.revparse([`--verify`, `origin/${baseBranch}`]);
+        actualBaseBranch = `origin/${baseBranch}`;
+      } catch {
+        try {
+          await git.revparse([`--verify`, `origin/master`]);
+          actualBaseBranch = `origin/master`;
+        } catch {
+          try {
+            await git.revparse([`--verify`, `master`]);
+            actualBaseBranch = `master`;
+          } catch {
+            // Fallback to comparing with HEAD~1 (previous commit)
+            actualBaseBranch = `HEAD~1`;
+          }
+        }
+      }
+    }
+
+    // If we're on the base branch, compare with HEAD~1
+    if (currentBranch.trim() === baseBranch || currentBranch.trim() === actualBaseBranch.replace('origin/', '')) {
+      actualBaseBranch = `HEAD~1`;
+    }
+
     // Get commits between base branch and current branch
-    const commits = await git.log([`${baseBranch}..${currentBranch.trim()}`]);
+    const commits = await git.log([`${actualBaseBranch}..${currentBranch.trim()}`]);
 
     // Get file changes (diff)
     const diffSummary = await git.diffSummary([
-      `${baseBranch}...${currentBranch.trim()}`,
+      `${actualBaseBranch}...${currentBranch.trim()}`,
     ]);
 
     // Get actual diff content
     const diffContent = await git.diff([
-      `${baseBranch}...${currentBranch.trim()}`,
+      `${actualBaseBranch}...${currentBranch.trim()}`,
     ]);
 
     return {
       currentBranch: currentBranch.trim(),
-      baseBranch,
+      baseBranch: actualBaseBranch,
       commits: commits.all,
       changedFiles: diffSummary.files,
       diffContent,
@@ -162,9 +192,39 @@ const getFileChanges = async (
     const git = simpleGit(repoPath);
     const currentBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
 
+    // Check if base branch exists, fallback to origin/main, origin/master, or HEAD~1
+    let actualBaseBranch = baseBranch;
+    try {
+      await git.revparse([`--verify`, `${baseBranch}`]);
+    } catch {
+      // Try remote branches
+      try {
+        await git.revparse([`--verify`, `origin/${baseBranch}`]);
+        actualBaseBranch = `origin/${baseBranch}`;
+      } catch {
+        try {
+          await git.revparse([`--verify`, `origin/master`]);
+          actualBaseBranch = `origin/master`;
+        } catch {
+          try {
+            await git.revparse([`--verify`, `master`]);
+            actualBaseBranch = `master`;
+          } catch {
+            // Fallback to comparing with HEAD~1 (previous commit)
+            actualBaseBranch = `HEAD~1`;
+          }
+        }
+      }
+    }
+
+    // If we're on the base branch, compare with HEAD~1
+    if (currentBranch.trim() === baseBranch || currentBranch.trim() === actualBaseBranch.replace('origin/', '')) {
+      actualBaseBranch = `HEAD~1`;
+    }
+
     // Get diff for specific file
     const diff = await git.diff([
-      `${baseBranch}...${currentBranch.trim()}`,
+      `${actualBaseBranch}...${currentBranch.trim()}`,
       "--",
       filePath,
     ]);
@@ -560,14 +620,45 @@ program
       // Get branch changes
       const branchChanges = await getBranchChanges(repoPath, options.base);
 
-      if (!branchChanges || branchChanges.changedFiles.length === 0) {
-        spinner.warn("No changes found between branches");
+      if (!branchChanges) {
+        spinner.warn("Could not analyze branch changes");
         console.log(
           chalk.yellow(
-            `No changes found between ${options.base} and ${gitInfo.currentBranch}`
+            `❌ Could not analyze Git changes. This might happen if:`
           )
         );
+        console.log(chalk.yellow(`   • Base branch '${options.base}' doesn't exist`));
+        console.log(chalk.yellow(`   • No commits found to compare`));
+        console.log(chalk.yellow(`   • Repository has no commit history`));
+        console.log(chalk.yellow(`\n💡 Try:`));
+        console.log(chalk.yellow(`   • steelheart-ai branch-docs --base master`));
+        console.log(chalk.yellow(`   • steelheart-ai branch-docs --base origin/main`));
+        console.log(chalk.yellow(`   • git log --oneline (to check commit history)`));
         return;
+      }
+
+      if (branchChanges.changedFiles.length === 0) {
+        // Check for working directory changes if no committed changes
+        const gitStatus = await simpleGit(repoPath).status();
+        if (gitStatus.modified.length > 0 || gitStatus.created.length > 0) {
+          spinner.info("No committed changes found, but working directory has modifications");
+          console.log(
+            chalk.blue(
+              `ℹ️  No committed changes between ${options.base} and ${gitInfo.currentBranch}`
+            )
+          );
+          console.log(chalk.blue(`💡 You have ${gitStatus.modified.length + gitStatus.created.length} uncommitted changes.`));
+          console.log(chalk.blue(`   Consider committing your changes first, then run this command again.`));
+          return;
+        } else {
+          spinner.warn("No changes found between branches");
+          console.log(
+            chalk.yellow(
+              `No changes found between ${options.base} and ${gitInfo.currentBranch}`
+            )
+          );
+          return;
+        }
       }
 
       spinner.text = "Generating documentation for changes...";
@@ -653,12 +744,27 @@ program
       if (filesToProcess.length === 0) {
         // Use changed files from git
         const branchChanges = await getBranchChanges(repoPath, options.base);
-        if (branchChanges) {
+        if (branchChanges && branchChanges.changedFiles.length > 0) {
           filesToProcess = branchChanges.changedFiles
             .filter((file) =>
               file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
             )
             .map((file) => file.file);
+        } else {
+          // If no committed changes, check working directory
+          const gitStatus = await simpleGit(repoPath).status();
+          const workingDirFiles = [
+            ...gitStatus.modified,
+            ...gitStatus.created,
+            ...gitStatus.staged
+          ].filter((file) =>
+            file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+          );
+          
+          if (workingDirFiles.length > 0) {
+            filesToProcess = workingDirFiles;
+            console.log(chalk.blue(`ℹ️  Using ${workingDirFiles.length} uncommitted files from working directory`));
+          }
         }
       }
 
