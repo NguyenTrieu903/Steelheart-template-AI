@@ -12,6 +12,7 @@ import { join, resolve } from "path";
 import { existsSync, writeFileSync, readFileSync } from "fs";
 import { ensureDirSync } from "fs-extra";
 import * as dotenv from "dotenv";
+import simpleGit from "simple-git";
 
 // Load environment variables
 dotenv.config();
@@ -64,10 +65,52 @@ const showBanner = () => {
   console.log();
 };
 
+// Git utility functions
+const getGitInfo = async (repoPath: string) => {
+  try {
+    const git = simpleGit(repoPath);
+    const branch = await git.revparse(['--abbrev-ref', 'HEAD']);
+    const status = await git.status();
+    const isGitRepo = await git.checkIsRepo();
+    
+    return {
+      currentBranch: branch.trim(),
+      hasChanges: !status.isClean(),
+      modifiedFiles: status.modified,
+      isGitRepo
+    };
+  } catch (error) {
+    return {
+      currentBranch: 'unknown',
+      hasChanges: false,
+      modifiedFiles: [],
+      isGitRepo: false
+    };
+  }
+};
+
+const detectProjectType = (repoPath: string) => {
+  const packageJsonPath = join(repoPath, 'package.json');
+  const requirementsPath = join(repoPath, 'requirements.txt');
+  const cargoPath = join(repoPath, 'Cargo.toml');
+  const goModPath = join(repoPath, 'go.mod');
+  
+  if (existsSync(packageJsonPath)) {
+    return 'Node.js/JavaScript';
+  } else if (existsSync(requirementsPath)) {
+    return 'Python';
+  } else if (existsSync(cargoPath)) {
+    return 'Rust';
+  } else if (existsSync(goModPath)) {
+    return 'Go';
+  }
+  return 'Unknown';
+};
+
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("1.0.0");
+  .version("1.1.0");
 
 // Setup command
 program
@@ -129,6 +172,7 @@ program
     "markdown"
   )
   .option("--pr <number>", "Review specific pull request")
+  .option("--auto", "Auto-detect current branch and review changes")
   .action(async (repoPath: string, options) => {
     showBanner();
     if (!validateApiKey()) return;
@@ -138,6 +182,21 @@ program
     try {
       const outputDir = getOutputDir(options.output);
       ensureDirSync(outputDir);
+
+      // Get Git information
+      const gitInfo = await getGitInfo(repoPath);
+      const projectType = detectProjectType(repoPath);
+
+      if (gitInfo.isGitRepo) {
+        spinner.text = `Analyzing ${projectType} project on branch: ${gitInfo.currentBranch}`;
+        console.log(chalk.blue(`\n📂 Project Type: ${projectType}`));
+        console.log(chalk.blue(`🌿 Current Branch: ${gitInfo.currentBranch}`));
+        if (gitInfo.hasChanges) {
+          console.log(chalk.yellow(`⚠️  Uncommitted changes detected (${gitInfo.modifiedFiles.length} files)`));
+        }
+      } else {
+        spinner.text = `Analyzing ${projectType} project (not a Git repository)`;
+      }
 
       spinner.text = "Performing AI code review...";
       const service = new CodeReviewService();
@@ -152,8 +211,90 @@ program
       console.log(`${chalk.yellow("Warnings:")} ${report.warningIssues}`);
       console.log(`${chalk.blue("Suggestions:")} ${report.suggestions.length}`);
       console.log(`${chalk.gray("Report saved to:")} ${outputDir}`);
+      
+      if (gitInfo.isGitRepo) {
+        console.log(`${chalk.gray("Branch reviewed:")} ${gitInfo.currentBranch}`);
+      }
     } catch (error) {
       spinner.fail("Code review failed");
+      console.error(chalk.red("Error:"), error);
+      process.exit(1);
+    }
+  });
+
+// Smart auto review command (new feature for library usage)
+program
+  .command("auto-review")
+  .alias("ar")
+  .description("🤖 Smart auto-review current branch changes")
+  .option("-o, --output <dir>", "Output directory")
+  .option("--staged", "Review only staged changes")
+  .option("--commits <number>", "Number of recent commits to review", "1")
+  .action(async (options) => {
+    showBanner();
+    if (!validateApiKey()) return;
+
+    const repoPath = process.cwd();
+    const spinner = ora("Auto-detecting repository changes...").start();
+
+    try {
+      const outputDir = getOutputDir(options.output);
+      ensureDirSync(outputDir);
+
+      // Get Git information
+      const gitInfo = await getGitInfo(repoPath);
+      
+      if (!gitInfo.isGitRepo) {
+        spinner.fail("Not a Git repository!");
+        console.log(chalk.red("❌ This command requires a Git repository"));
+        return;
+      }
+
+      const projectType = detectProjectType(repoPath);
+      
+      spinner.text = `Smart review on ${gitInfo.currentBranch} branch...`;
+      console.log(chalk.blue(`\n🤖 Auto-Review Mode`));
+      console.log(chalk.blue(`📂 Project Type: ${projectType}`));
+      console.log(chalk.blue(`🌿 Current Branch: ${gitInfo.currentBranch}`));
+      
+      if (gitInfo.hasChanges) {
+        console.log(chalk.yellow(`📝 Modified Files (${gitInfo.modifiedFiles.length}):`));
+        gitInfo.modifiedFiles.slice(0, 5).forEach(file => {
+          console.log(chalk.gray(`   • ${file}`));
+        });
+        if (gitInfo.modifiedFiles.length > 5) {
+          console.log(chalk.gray(`   ... and ${gitInfo.modifiedFiles.length - 5} more`));
+        }
+      } else {
+        console.log(chalk.green(`✅ No uncommitted changes`));
+      }
+
+      spinner.text = "Performing smart AI code review...";
+      const service = new CodeReviewService();
+      const report = await service.performCodeReview(repoPath, outputDir);
+
+      spinner.succeed("Smart review completed!");
+
+      console.log(chalk.blue("\n🤖 Smart Review Results:"));
+      console.log(`${chalk.gray("Branch:")} ${gitInfo.currentBranch}`);
+      console.log(`${chalk.gray("Project Type:")} ${projectType}`);
+      console.log(`${chalk.gray("Total Issues:")} ${report.issues.length}`);
+      console.log(`${chalk.red("Critical:")} ${report.criticalIssues}`);
+      console.log(`${chalk.yellow("Warnings:")} ${report.warningIssues}`);
+      console.log(`${chalk.blue("Suggestions:")} ${report.suggestions.length}`);
+      console.log(`${chalk.gray("Report saved to:")} ${outputDir}`);
+      
+      // Show quick tips
+      if (report.criticalIssues > 0) {
+        console.log(chalk.red("\n⚠️  Critical issues found! Please review before pushing."));
+      } else if (report.warningIssues > 0) {
+        console.log(chalk.yellow("\n💡 Some improvements suggested. Consider reviewing."));
+      } else {
+        console.log(chalk.green("\n✨ Great job! No critical issues found."));
+      }
+      
+    } catch (error) {
+      spinner.fail("Smart review failed");
       console.error(chalk.red("Error:"), error);
       process.exit(1);
     }

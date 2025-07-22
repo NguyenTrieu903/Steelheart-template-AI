@@ -1,12 +1,12 @@
 {
   "name": "steelheart-ai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI-powered code review, documentation generation, and testing toolkit using Gemini AI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "st": "dist/cli.js",
-    "steelheart": "dist/cli.js"
+    "steelheart": "dist/cli.js",
+    "st": "dist/cli.js"
   },
   "scripts": {
     "start": "ts-node src/index.ts",
@@ -19,7 +19,7 @@
     "setup": "npm run build && node dist/cli.js setup",
     "all": "npm run build && node dist/cli.js all",
     "prepublishOnly": "npm run build",
-    "postinstall": "node dist/setup.js || true"
+    "postinstall": "node dist/setup.js || echo 'Welcome to Steelheart AI! Run: steelheart setup to get started.'"
   },
   "files": [
     "dist/**/*",

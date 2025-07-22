@@ -1,68 +1,80 @@
-# Gemini AI Template
+# Steelheart AI
 
-A comprehensive TypeScript template for integrating Google's Gemini AI into your development workflow. This template provides automated **code review**, **documentation generation**, and **test creation** capabilities powered by Gemini AI.
+A comprehensive AI-powered development toolkit using Google's Gemini AI. This package provides automated **code review**, **documentation generation**, and **test creation** capabilities that can be used as a CLI tool or integrated as a library in any project.
 
-## Features
+## 🚀 Quick Start
 
-- 🔍 **Automated Code Review**: Analyze code for bugs, security issues, performance problems, and best practices
-- 📖 **Documentation Generation**: Create comprehensive documentation including README, API docs, and usage guides
-- 🧪 **Test Generation**: Generate unit tests and integration tests with proper test cases
-- 🔧 **CLI Interface**: Easy-to-use command-line tools
-- 📦 **Modular Design**: Use as a library or standalone CLI tool
-- 🌐 **Multi-language Support**: Works with JavaScript, TypeScript, Python, Java, Go, Rust, and more
-
-## Quick Start
-
-### 1. Installation
+### Global Installation (Recommended for CLI usage)
 
 ```bash
-# Clone the template
-git clone <your-repo-url>
-cd gemini-ai-template
+# Install globally via npm
+npm install -g steelheart-ai
 
-# Install dependencies
-npm install
+# Setup your Gemini API key
+steelheart setup
 
-# Set up your Gemini API key
-npm run setup -- -k YOUR_GEMINI_API_KEY
+# Auto-review your current project
+cd /path/to/your/project
+steelheart auto-review
 ```
 
-### 2. Get Your API Key
-
-1. Visit [Google AI Studio](https://aistudio.google.com/apikey)
-2. Create a new API key
-3. Configure it using the setup command:
+### Local Installation (For library usage)
 
 ```bash
-npm run setup -- -k YOUR_API_KEY
+# Install as a dependency
+npm install steelheart-ai
+
+# Or install as dev dependency
+npm install --save-dev steelheart-ai
 ```
 
-### 3. Usage
+## 📋 Features
 
-#### CLI Usage
+- 🔍 **Smart Auto-Review**: Automatically analyze your current Git branch
+- 📝 **AI Code Review**: Deep analysis for bugs, security, performance
+- 📖 **Documentation Generation**: Auto-generate comprehensive docs
+- 🧪 **Test Generation**: Create unit and integration tests
+- 🌿 **Git Integration**: Branch-aware analysis and reporting
+- 🎯 **Project Detection**: Auto-detect project type (Node.js, Python, Rust, Go, etc.)
+- 📦 **CLI & Library**: Use as command-line tool or integrate into your workflow
+
+## 🎯 Usage Examples
+
+### CLI Usage (After Global Installation)
 
 ```bash
-# Run code review
-npm run review /path/to/your/repo
+# Quick auto-review of current project
+steelheart auto-review
+
+# Full code review
+steelheart review
 
 # Generate documentation
-npm run docs /path/to/your/repo
+steelheart docs
 
 # Generate tests
-npm run test-gen /path/to/your/repo
+steelheart gen-tests
 
-# Run all operations
-npx ts-node src/cli.ts all /path/to/your/repo
+# Complete analysis (review + docs + tests)
+steelheart analyze
+
+# Show help
+steelheart --help
 ```
 
-#### Programmatic Usage
+### Library Usage (Programmatic)
 
 ```typescript
-import { analyzeRepository, CodeReviewService } from "./src/index";
+import { 
+  CodeReviewService, 
+  DocumentationService, 
+  TestingService, 
+  analyzeRepository 
+} from 'steelheart-ai';
 
-// Analyze entire repository
-const results = await analyzeRepository("/path/to/repo", {
-  outputPath: "./analysis-results",
+// Auto-analyze entire repository
+const results = await analyzeRepository('/path/to/project', {
+  outputPath: './analysis-results',
   includeReview: true,
   includeDocs: true,
   includeTests: true,
@@ -70,7 +82,47 @@ const results = await analyzeRepository("/path/to/repo", {
 
 // Or use individual services
 const reviewService = new CodeReviewService();
-const report = await reviewService.performCodeReview("/path/to/repo");
+const report = await reviewService.performCodeReview('./');
+
+console.log(`Found ${report.issues.length} issues`);
+```
+
+### Real-World Example
+
+```bash
+# Navigate to any existing project
+cd ~/my-awesome-project
+
+# Install Steelheart AI globally (one time setup)
+npm install -g steelheart-ai
+
+# Setup API key (one time setup)
+steelheart setup
+
+# Now use it in any project!
+steelheart auto-review
+
+# Output:
+# 🚀 Steelheart AI - AI-powered development toolkit
+# 
+# 🤖 Auto-Review Mode
+# 📂 Project Type: Node.js/JavaScript
+# 🌿 Current Branch: feature/new-feature
+# 📝 Modified Files (3):
+#    • src/components/Button.tsx
+#    • src/utils/helpers.ts
+#    • tests/Button.test.tsx
+# 
+# 🤖 Smart Review Results:
+# Branch: feature/new-feature
+# Project Type: Node.js/JavaScript
+# Total Issues: 2
+# Critical: 0
+# Warnings: 2
+# Suggestions: 5
+# Report saved to: ./steelheart-output
+# 
+# 💡 Some improvements suggested. Consider reviewing.
 ```
 
 ## Template Structure
