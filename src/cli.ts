@@ -118,7 +118,8 @@ const detectProjectType = (repoPath: string) => {
 // Enhanced Git utilities for branch changes and documentation
 const getBranchChanges = async (
   repoPath: string,
-  baseBranch: string = "main"
+  baseBranch: string = "main",
+  includeUncommitted: boolean = false
 ) => {
   try {
     const git = simpleGit(repoPath);
@@ -158,14 +159,54 @@ const getBranchChanges = async (
     const commits = await git.log([`${actualBaseBranch}..${currentBranch.trim()}`]);
 
     // Get file changes (diff)
-    const diffSummary = await git.diffSummary([
-      `${actualBaseBranch}...${currentBranch.trim()}`,
-    ]);
-
-    // Get actual diff content
-    const diffContent = await git.diff([
-      `${actualBaseBranch}...${currentBranch.trim()}`,
-    ]);
+    let diffSummary, diffContent;
+    
+    if (includeUncommitted) {
+      // Include working directory changes
+      const status = await git.status();
+      const committedDiff = await git.diffSummary([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      const workingDiff = await git.diffSummary();
+      
+      // Combine committed and working directory changes
+      const allFiles = new Map();
+      
+      // Add committed changes
+      committedDiff.files.forEach(file => {
+        allFiles.set(file.file, {
+          file: file.file,
+          insertions: (file as any).insertions || 0,
+          deletions: (file as any).deletions || 0,
+          binary: (file as any).binary || false
+        });
+      });
+      
+      // Add/update with working directory changes
+      workingDiff.files.forEach(file => {
+        const existing = allFiles.get(file.file) || { file: file.file, insertions: 0, deletions: 0, binary: false };
+        allFiles.set(file.file, {
+          file: file.file,
+          insertions: existing.insertions + ((file as any).insertions || 0),
+          deletions: existing.deletions + ((file as any).deletions || 0),
+          binary: existing.binary || (file as any).binary || false
+        });
+      });
+      
+      diffSummary = {
+        files: Array.from(allFiles.values()),
+        insertions: committedDiff.insertions + workingDiff.insertions,
+        deletions: committedDiff.deletions + workingDiff.deletions,
+        changed: allFiles.size
+      };
+      
+      // Get diff content including working directory
+      const committedDiffContent = await git.diff([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      const workingDiffContent = await git.diff();
+      diffContent = committedDiffContent + "\n\n--- Working Directory Changes ---\n" + workingDiffContent;
+    } else {
+      // Only committed changes
+      diffSummary = await git.diffSummary([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      diffContent = await git.diff([`${actualBaseBranch}...${currentBranch.trim()}`]);
+    }
 
     return {
       currentBranch: currentBranch.trim(),
@@ -176,6 +217,7 @@ const getBranchChanges = async (
       totalInsertions: diffSummary.insertions,
       totalDeletions: diffSummary.deletions,
       totalChanges: diffSummary.changed,
+      includeUncommitted
     };
   } catch (error) {
     console.warn("Could not get branch changes:", error);
@@ -249,37 +291,73 @@ const generateBranchDocumentation = async (
   branchChanges: any,
   repoPath: string
 ): Promise<string> => {
-  const prompt = `Please generate comprehensive documentation for the following branch changes:
+  // Enhanced prompt with more context and detailed analysis request
+  const prompt = `You are a senior technical documentation expert. Analyze the following Git branch changes and create comprehensive documentation that explains not just WHAT changed, but WHY and HOW it impacts the project.
 
-Branch: ${branchChanges.currentBranch}
-Base Branch: ${branchChanges.baseBranch}
-Total Changes: ${branchChanges.totalChanges} files
-Insertions: ${branchChanges.totalInsertions}
-Deletions: ${branchChanges.totalDeletions}
+## Branch Information
+- **Current Branch**: ${branchChanges.currentBranch}
+- **Base Branch**: ${branchChanges.baseBranch}
+- **Total Files Modified**: ${branchChanges.totalChanges}
+- **Lines Added**: ${branchChanges.totalInsertions}
+- **Lines Removed**: ${branchChanges.totalDeletions}
+- **Include Uncommitted**: ${branchChanges.includeUncommitted ? 'Yes' : 'No'}
 
-Commits:
+## Commit History
 ${branchChanges.commits
-  .map((commit: any) => `- ${commit.hash.substring(0, 8)}: ${commit.message}`)
+  .map((commit: any) => `- **${commit.hash.substring(0, 8)}**: ${commit.message}${commit.author_name ? ` (${commit.author_name})` : ''}`)
   .join("\n")}
 
-Changed Files:
+## Files Modified
 ${branchChanges.changedFiles
-  .map((file: any) => `- ${file.file} (+${file.insertions} -${file.deletions})`)
+  .map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})${file.binary ? ' [BINARY]' : ''}`)
   .join("\n")}
 
-Diff Content (first 2000 chars):
-${branchChanges.diffContent.substring(0, 2000)}
+## Code Changes (Diff Analysis)
+\`\`\`diff
+${branchChanges.diffContent.substring(0, 4000)}
+${branchChanges.diffContent.length > 4000 ? '\n... (truncated for brevity)' : ''}
+\`\`\`
 
-Please create documentation that includes:
-1. Summary of changes
-2. Purpose and impact of changes
-3. Files modified and their significance
-4. Any breaking changes or important notes
-5. Testing recommendations
+## Analysis Requirements
+Please provide a detailed analysis that includes:
 
-Format as markdown documentation.`;
+### 1. **Executive Summary**
+- High-level overview of what this branch accomplishes
+- Business value or technical improvement achieved
 
-  const systemInstruction = `You are a technical documentation expert. Generate clear, comprehensive documentation for Git branch changes that helps team members understand what was modified and why.`;
+### 2. **Technical Analysis**
+- Detailed breakdown of changes in each file
+- Architecture or design patterns introduced/modified
+- Code quality improvements or refactoring done
+
+### 3. **Impact Assessment**
+- How these changes affect the overall system
+- Potential breaking changes or compatibility issues
+- Performance implications (if any)
+
+### 4. **Code Quality & Best Practices**
+- Adherence to coding standards
+- Security considerations
+- Error handling improvements
+
+### 5. **Testing & Validation**
+- Recommended testing strategies
+- Edge cases to consider
+- Integration testing requirements
+
+### 6. **Deployment Considerations**
+- Migration steps (if any)
+- Configuration changes needed
+- Rollback procedures
+
+### 7. **Developer Notes**
+- Key implementation details
+- Design decisions made
+- Future considerations or TODOs
+
+Please format as comprehensive markdown documentation with clear sections and actionable insights.`;
+
+  const systemInstruction = `You are a senior technical documentation expert and code reviewer with deep expertise in software architecture, best practices, and team collaboration. Your role is to create documentation that not only describes changes but provides meaningful insights that help team members understand the technical decisions, implications, and next steps. Focus on clarity, completeness, and actionable information.`;
 
   try {
     const content = await service["geminiClient"].generateContent(
@@ -288,18 +366,145 @@ Format as markdown documentation.`;
     );
     return content;
   } catch (error) {
-    console.warn("Failed to generate AI documentation, creating basic summary");
+    console.warn("Failed to generate AI documentation, creating detailed manual analysis");
+    
+    // Enhanced fallback with much more detailed analysis
+    const analysisDate = new Date().toISOString().split('T')[0];
+    const fileTypes = branchChanges.changedFiles.reduce((acc: any, file: any) => {
+      const ext = file.file.split('.').pop()?.toLowerCase() || 'unknown';
+      acc[ext] = (acc[ext] || 0) + 1;
+      return acc;
+    }, {});
+    
+    const majorFiles = branchChanges.changedFiles.filter((file: any) => 
+      (file.insertions || 0) + (file.deletions || 0) > 10
+    );
+    
+    const minorFiles = branchChanges.changedFiles.filter((file: any) => 
+      (file.insertions || 0) + (file.deletions || 0) <= 10
+    );
+
+    // Analyze diff content for insights
+    const { insights, fileTypeAnalysis } = analyzeDiffContent(branchChanges.diffContent, branchChanges.changedFiles);
+    
     return `# Branch Documentation: ${branchChanges.currentBranch}
 
-## Summary
-Changes from ${branchChanges.baseBranch} to ${branchChanges.currentBranch}
+> **Generated on**: ${analysisDate}  
+> **Base Branch**: ${branchChanges.baseBranch}  
+> **Analysis Type**: ${branchChanges.includeUncommitted ? 'Including uncommitted changes' : 'Committed changes only'}
 
-## Files Changed
-${branchChanges.changedFiles.map((file: any) => `- ${file.file}`).join("\n")}
+## 📋 Executive Summary
 
-## Commits
-${branchChanges.commits.map((commit: any) => `- ${commit.message}`).join("\n")}
-`;
+This branch contains **${branchChanges.totalChanges} file(s)** with **${branchChanges.totalInsertions} additions** and **${branchChanges.totalDeletions} deletions**, representing ${branchChanges.commits.length > 0 ? `${branchChanges.commits.length} commit(s)` : 'uncommitted changes'}.
+
+${insights.newFeatures.length > 0 ? `### 🆕 New Features Detected\n${insights.newFeatures.slice(0, 3).map(f => `- ${f}`).join('\n')}\n` : ''}
+${insights.bugFixes.length > 0 ? `### 🐛 Bug Fixes Detected\n${insights.bugFixes.slice(0, 3).map(f => `- ${f}`).join('\n')}\n` : ''}
+${insights.functionsModified.length > 0 ? `### ⚙️ Functions/Classes Modified\n${insights.functionsModified.slice(0, 5).map(f => `- ${f}`).join('\n')}\n` : ''}
+
+## 🔄 Change Overview
+
+### File Type Distribution
+${Object.entries(fileTypes).map(([ext, count]) => `- **${ext.toUpperCase()}**: ${count} file(s)`).join('\n')}
+
+### Project Structure Analysis
+- **Code Files**: ${fileTypeAnalysis.codeFiles} (TypeScript/JavaScript)
+- **Configuration Files**: ${fileTypeAnalysis.configFiles} (JSON/Config)
+- **Documentation**: ${fileTypeAnalysis.docFiles} (Markdown)
+- **Test Files**: ${fileTypeAnalysis.testFiles} (Test/Spec)
+
+### Commit History
+${branchChanges.commits.length > 0 ? 
+  branchChanges.commits.map((commit: any) => `- **${commit.hash.substring(0, 8)}**: ${commit.message}`).join('\n') :
+  '_No commits found (working directory changes)_'
+}
+
+## 📁 Files Modified
+
+### Major Changes (>10 lines)
+${majorFiles.length > 0 ? 
+  majorFiles.map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})`).join('\n') :
+  '_No major changes detected_'
+}
+
+### Minor Changes (≤10 lines)
+${minorFiles.length > 0 ? 
+  minorFiles.map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})`).join('\n') :
+  '_No minor changes detected_'
+}
+
+## 🔍 Technical Analysis
+
+### Code Changes Summary
+- **Total Lines Changed**: ${branchChanges.totalInsertions + branchChanges.totalDeletions}
+- **Net Change**: ${branchChanges.totalInsertions - branchChanges.totalDeletions > 0 ? '+' : ''}${branchChanges.totalInsertions - branchChanges.totalDeletions} lines
+- **Change Ratio**: ${branchChanges.totalDeletions > 0 ? Math.round((branchChanges.totalInsertions / branchChanges.totalDeletions) * 100) / 100 : 'N/A'} (additions/deletions)
+
+### Change Pattern Analysis
+${insights.dependencies.length > 0 ? `- **Dependencies**: ${insights.dependencies.length} dependency-related changes detected\n` : ''}
+${insights.configChanges.length > 0 ? `- **Configuration**: ${insights.configChanges.length} configuration changes detected\n` : ''}
+${fileTypeAnalysis.codeFiles > 0 ? `- **Code Logic**: ${fileTypeAnalysis.codeFiles} code files modified\n` : ''}
+${fileTypeAnalysis.testFiles > 0 ? `- **Testing**: ${fileTypeAnalysis.testFiles} test files modified\n` : ''}
+
+### File Impact Analysis
+${branchChanges.changedFiles.map((file: any) => {
+  const totalChanges = (file.insertions || 0) + (file.deletions || 0);
+  const impact = totalChanges > 50 ? 'HIGH' : totalChanges > 10 ? 'MEDIUM' : 'LOW';
+  return `- **${file.file}**: ${impact} impact (${totalChanges} lines changed)`;
+}).join('\n')}
+
+## 📊 Change Statistics
+
+| Metric | Value |
+|--------|-------|
+| Files Modified | ${branchChanges.totalChanges} |
+| Lines Added | ${branchChanges.totalInsertions} |
+| Lines Removed | ${branchChanges.totalDeletions} |
+| Net Lines | ${branchChanges.totalInsertions - branchChanges.totalDeletions} |
+| Commits | ${branchChanges.commits.length} |
+
+## 🔧 Recommended Actions
+
+### For Code Review
+- [ ] Review changes in high-impact files: ${majorFiles.map((f: any) => f.file).join(', ') || 'None'}
+- [ ] Verify backward compatibility
+- [ ] Check for potential security issues
+- [ ] Validate error handling in modified code
+${insights.functionsModified.length > 0 ? `- [ ] Review modified functions: ${insights.functionsModified.slice(0, 3).join(', ')}\n` : ''}
+
+### For Testing
+- [ ] Unit tests for modified functions
+- [ ] Integration tests for affected modules
+- [ ] Regression testing for ${fileTypes.js || fileTypes.ts || fileTypes.py ? 'core functionality' : 'affected components'}
+- [ ] Performance testing if applicable
+${fileTypeAnalysis.testFiles > 0 ? `- [ ] Run existing test suite (${fileTypeAnalysis.testFiles} test files modified)\n` : ''}
+
+### For Deployment
+- [ ] Review configuration changes
+- [ ] Check for database migrations (if any)
+- [ ] Validate environment variables
+- [ ] Plan rollback strategy
+${insights.dependencies.length > 0 ? `- [ ] Update dependencies (${insights.dependencies.length} dependency changes detected)\n` : ''}
+
+## 📝 Additional Notes
+
+**Branch Type**: ${branchChanges.includeUncommitted ? 'Working branch with uncommitted changes' : 'Committed changes ready for review'}
+
+**Complexity Assessment**: ${branchChanges.totalChanges > 10 ? 'HIGH' : branchChanges.totalChanges > 3 ? 'MEDIUM' : 'LOW'} - Based on number of files modified
+
+**Review Priority**: ${majorFiles.length > 0 ? 'HIGH' : 'MEDIUM'} - ${majorFiles.length > 0 ? 'Contains significant changes requiring careful review' : 'Standard changes requiring normal review process'}
+
+${insights.newFeatures.length > 0 ? `**Feature Development**: This appears to be feature development work with ${insights.newFeatures.length} new feature(s) detected.\n` : ''}
+${insights.bugFixes.length > 0 ? `**Bug Fixes**: This branch contains ${insights.bugFixes.length} bug fix(es).\n` : ''}
+
+## 🔍 Detailed Diff Analysis
+
+### Key Changes Detected:
+${branchChanges.diffContent.split('\n').filter((line: string) => line.startsWith('+')).slice(0, 10).map((line: string) => `- ${line.substring(1).trim()}`).join('\n')}
+
+${branchChanges.diffContent.length > 1000 ? '\n### Code Diff Preview:\n```diff\n' + branchChanges.diffContent.substring(0, 1000) + '\n... (truncated)\n```' : ''}
+
+---
+*This documentation was generated automatically. For AI-powered detailed analysis, ensure a valid Gemini API key is configured.*`;
   }
 };
 
@@ -376,10 +581,72 @@ Format your response as JSON:
   }
 };
 
+// Function to analyze diff content for meaningful insights
+const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
+  const insights = {
+    codePatterns: [] as string[],
+    functionsModified: [] as string[],
+    newFeatures: [] as string[],
+    bugFixes: [] as string[],
+    refactoring: [] as string[],
+    configChanges: [] as string[],
+    dependencies: [] as string[],
+  };
+
+  const lines = diffContent.split('\n');
+  
+  for (const line of lines) {
+    // Detect function additions/modifications
+    if (line.startsWith('+') && (line.includes('function ') || line.includes('const ') || line.includes('class ') || line.includes('interface '))) {
+      const match = line.match(/(?:function|const|class|interface)\s+(\w+)/);
+      if (match) {
+        insights.functionsModified.push(match[1]);
+      }
+    }
+    
+    // Detect new features
+    if (line.startsWith('+') && (line.toLowerCase().includes('feature') || line.toLowerCase().includes('add') || line.toLowerCase().includes('new'))) {
+      insights.newFeatures.push(line.replace(/^\+\s*/, '').substring(0, 50) + '...');
+    }
+    
+    // Detect bug fixes
+    if (line.startsWith('+') && (line.toLowerCase().includes('fix') || line.toLowerCase().includes('bug') || line.toLowerCase().includes('error'))) {
+      insights.bugFixes.push(line.replace(/^\+\s*/, '').substring(0, 50) + '...');
+    }
+    
+    // Detect dependency changes
+    if (line.includes('package.json') || line.includes('dependencies')) {
+      insights.dependencies.push(line.replace(/^[+-]\s*/, '').substring(0, 50) + '...');
+    }
+    
+    // Detect configuration changes
+    if (line.includes('.json') || line.includes('.config') || line.includes('.env')) {
+      insights.configChanges.push(line.replace(/^[+-]\s*/, '').substring(0, 50) + '...');
+    }
+  }
+
+  // Analyze file types for patterns
+  const fileTypeAnalysis = changedFiles.reduce((acc: any, file: any) => {
+    const ext = file.file.split('.').pop()?.toLowerCase();
+    if (ext === 'ts' || ext === 'js') {
+      acc.codeFiles += 1;
+    } else if (ext === 'json') {
+      acc.configFiles += 1;
+    } else if (ext === 'md') {
+      acc.docFiles += 1;
+    } else if (ext === 'test.ts' || ext === 'spec.ts') {
+      acc.testFiles += 1;
+    }
+    return acc;
+  }, { codeFiles: 0, configFiles: 0, docFiles: 0, testFiles: 0 });
+
+  return { insights, fileTypeAnalysis };
+};
+
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("1.2.0");
+  .version("1.3.1");
 
 // Setup command
 program
@@ -597,6 +864,7 @@ program
     "markdown"
   )
   .option("--commit-messages", "Include commit messages in documentation")
+  .option("--include-local", "Include uncommitted local changes")
   .action(async (options) => {
     showBanner();
     if (!validateApiKey()) return;
@@ -617,8 +885,8 @@ program
         return;
       }
 
-      // Get branch changes
-      const branchChanges = await getBranchChanges(repoPath, options.base);
+      // Get branch changes with optional local changes
+      const branchChanges = await getBranchChanges(repoPath, options.base, options.includeLocal);
 
       if (!branchChanges) {
         spinner.warn("Could not analyze branch changes");
@@ -633,11 +901,12 @@ program
         console.log(chalk.yellow(`\n💡 Try:`));
         console.log(chalk.yellow(`   • steelheart-ai branch-docs --base master`));
         console.log(chalk.yellow(`   • steelheart-ai branch-docs --base origin/main`));
+        console.log(chalk.yellow(`   • steelheart-ai branch-docs --include-local (for uncommitted changes)`));
         console.log(chalk.yellow(`   • git log --oneline (to check commit history)`));
         return;
       }
 
-      if (branchChanges.changedFiles.length === 0) {
+      if (branchChanges.changedFiles.length === 0 && !options.includeLocal) {
         // Check for working directory changes if no committed changes
         const gitStatus = await simpleGit(repoPath).status();
         if (gitStatus.modified.length > 0 || gitStatus.created.length > 0) {
@@ -648,7 +917,8 @@ program
             )
           );
           console.log(chalk.blue(`💡 You have ${gitStatus.modified.length + gitStatus.created.length} uncommitted changes.`));
-          console.log(chalk.blue(`   Consider committing your changes first, then run this command again.`));
+          console.log(chalk.blue(`   Use --include-local to include these changes in documentation.`));
+          console.log(chalk.blue(`   Or commit your changes first, then run this command again.`));
           return;
         } else {
           spinner.warn("No changes found between branches");
@@ -675,6 +945,10 @@ program
         chalk.blue(`➕ Insertions: ${branchChanges.totalInsertions}`)
       );
       console.log(chalk.blue(`➖ Deletions: ${branchChanges.totalDeletions}`));
+      
+      if (options.includeLocal && branchChanges.includeUncommitted) {
+        console.log(chalk.yellow("📋 Including uncommitted local changes"));
+      }
 
       // Generate documentation using AI
       const service = new DocumentationService();
@@ -685,9 +959,10 @@ program
       );
 
       // Save documentation
+      const docSuffix = options.includeLocal ? "with-local" : "committed";
       const docPath = join(
         outputDir,
-        `branch-${branchChanges.currentBranch}-docs.md`
+        `branch-${branchChanges.currentBranch}-docs-${docSuffix}.md`
       );
       writeFileSync(docPath, branchDocs);
 
@@ -699,6 +974,9 @@ program
       console.log(
         `${chalk.gray("Files changed:")} ${branchChanges.changedFiles.length}`
       );
+      if (options.includeLocal && branchChanges.includeUncommitted) {
+        console.log(`${chalk.gray("Includes:")} Uncommitted local changes`);
+      }
       console.log(`${chalk.gray("Documentation saved to:")} ${docPath}`);
     } catch (error) {
       spinner.fail("Branch documentation generation failed");
@@ -1079,3 +1357,4 @@ program.parse();
 if (!process.argv.slice(2).length) {
   program.outputHelp();
 }
+// Local test change
