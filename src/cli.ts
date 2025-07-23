@@ -151,61 +151,82 @@ const getBranchChanges = async (
     }
 
     // If we're on the base branch, compare with HEAD~1
-    if (currentBranch.trim() === baseBranch || currentBranch.trim() === actualBaseBranch.replace('origin/', '')) {
+    if (
+      currentBranch.trim() === baseBranch ||
+      currentBranch.trim() === actualBaseBranch.replace("origin/", "")
+    ) {
       actualBaseBranch = `HEAD~1`;
     }
 
     // Get commits between base branch and current branch
-    const commits = await git.log([`${actualBaseBranch}..${currentBranch.trim()}`]);
+    const commits = await git.log([
+      `${actualBaseBranch}..${currentBranch.trim()}`,
+    ]);
 
     // Get file changes (diff)
     let diffSummary, diffContent;
-    
+
     if (includeUncommitted) {
       // Include working directory changes
       const status = await git.status();
-      const committedDiff = await git.diffSummary([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      const committedDiff = await git.diffSummary([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
       const workingDiff = await git.diffSummary();
-      
+
       // Combine committed and working directory changes
       const allFiles = new Map();
-      
+
       // Add committed changes
-      committedDiff.files.forEach(file => {
+      committedDiff.files.forEach((file) => {
         allFiles.set(file.file, {
           file: file.file,
           insertions: (file as any).insertions || 0,
           deletions: (file as any).deletions || 0,
-          binary: (file as any).binary || false
+          binary: (file as any).binary || false,
         });
       });
-      
+
       // Add/update with working directory changes
-      workingDiff.files.forEach(file => {
-        const existing = allFiles.get(file.file) || { file: file.file, insertions: 0, deletions: 0, binary: false };
+      workingDiff.files.forEach((file) => {
+        const existing = allFiles.get(file.file) || {
+          file: file.file,
+          insertions: 0,
+          deletions: 0,
+          binary: false,
+        };
         allFiles.set(file.file, {
           file: file.file,
           insertions: existing.insertions + ((file as any).insertions || 0),
           deletions: existing.deletions + ((file as any).deletions || 0),
-          binary: existing.binary || (file as any).binary || false
+          binary: existing.binary || (file as any).binary || false,
         });
       });
-      
+
       diffSummary = {
         files: Array.from(allFiles.values()),
         insertions: committedDiff.insertions + workingDiff.insertions,
         deletions: committedDiff.deletions + workingDiff.deletions,
-        changed: allFiles.size
+        changed: allFiles.size,
       };
-      
+
       // Get diff content including working directory
-      const committedDiffContent = await git.diff([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      const committedDiffContent = await git.diff([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
       const workingDiffContent = await git.diff();
-      diffContent = committedDiffContent + "\n\n--- Working Directory Changes ---\n" + workingDiffContent;
+      diffContent =
+        committedDiffContent +
+        "\n\n--- Working Directory Changes ---\n" +
+        workingDiffContent;
     } else {
       // Only committed changes
-      diffSummary = await git.diffSummary([`${actualBaseBranch}...${currentBranch.trim()}`]);
-      diffContent = await git.diff([`${actualBaseBranch}...${currentBranch.trim()}`]);
+      diffSummary = await git.diffSummary([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
+      diffContent = await git.diff([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
     }
 
     return {
@@ -217,7 +238,7 @@ const getBranchChanges = async (
       totalInsertions: diffSummary.insertions,
       totalDeletions: diffSummary.deletions,
       totalChanges: diffSummary.changed,
-      includeUncommitted
+      includeUncommitted,
     };
   } catch (error) {
     console.warn("Could not get branch changes:", error);
@@ -260,7 +281,10 @@ const getFileChanges = async (
     }
 
     // If we're on the base branch, compare with HEAD~1
-    if (currentBranch.trim() === baseBranch || currentBranch.trim() === actualBaseBranch.replace('origin/', '')) {
+    if (
+      currentBranch.trim() === baseBranch ||
+      currentBranch.trim() === actualBaseBranch.replace("origin/", "")
+    ) {
       actualBaseBranch = `HEAD~1`;
     }
 
@@ -300,22 +324,34 @@ const generateBranchDocumentation = async (
 - **Total Files Modified**: ${branchChanges.totalChanges}
 - **Lines Added**: ${branchChanges.totalInsertions}
 - **Lines Removed**: ${branchChanges.totalDeletions}
-- **Include Uncommitted**: ${branchChanges.includeUncommitted ? 'Yes' : 'No'}
+- **Include Uncommitted**: ${branchChanges.includeUncommitted ? "Yes" : "No"}
 
 ## Commit History
 ${branchChanges.commits
-  .map((commit: any) => `- **${commit.hash.substring(0, 8)}**: ${commit.message}${commit.author_name ? ` (${commit.author_name})` : ''}`)
+  .map(
+    (commit: any) =>
+      `- **${commit.hash.substring(0, 8)}**: ${commit.message}${
+        commit.author_name ? ` (${commit.author_name})` : ""
+      }`
+  )
   .join("\n")}
 
 ## Files Modified
 ${branchChanges.changedFiles
-  .map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})${file.binary ? ' [BINARY]' : ''}`)
+  .map(
+    (file: any) =>
+      `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})${
+        file.binary ? " [BINARY]" : ""
+      }`
+  )
   .join("\n")}
 
 ## Code Changes (Diff Analysis)
 \`\`\`diff
 ${branchChanges.diffContent.substring(0, 4000)}
-${branchChanges.diffContent.length > 4000 ? '\n... (truncated for brevity)' : ''}
+${
+  branchChanges.diffContent.length > 4000 ? "\n... (truncated for brevity)" : ""
+}
 \`\`\`
 
 ## Analysis Requirements
@@ -366,45 +402,88 @@ Please format as comprehensive markdown documentation with clear sections and ac
     );
     return content;
   } catch (error) {
-    console.warn("Failed to generate AI documentation, creating detailed manual analysis");
-    
-    // Enhanced fallback with much more detailed analysis
-    const analysisDate = new Date().toISOString().split('T')[0];
-    const fileTypes = branchChanges.changedFiles.reduce((acc: any, file: any) => {
-      const ext = file.file.split('.').pop()?.toLowerCase() || 'unknown';
-      acc[ext] = (acc[ext] || 0) + 1;
-      return acc;
-    }, {});
-    
-    const majorFiles = branchChanges.changedFiles.filter((file: any) => 
-      (file.insertions || 0) + (file.deletions || 0) > 10
+    console.warn(
+      "Failed to generate AI documentation, creating detailed manual analysis"
     );
-    
-    const minorFiles = branchChanges.changedFiles.filter((file: any) => 
-      (file.insertions || 0) + (file.deletions || 0) <= 10
+
+    // Enhanced fallback with much more detailed analysis
+    const analysisDate = new Date().toISOString().split("T")[0];
+    const fileTypes = branchChanges.changedFiles.reduce(
+      (acc: any, file: any) => {
+        const ext = file.file.split(".").pop()?.toLowerCase() || "unknown";
+        acc[ext] = (acc[ext] || 0) + 1;
+        return acc;
+      },
+      {}
+    );
+
+    const majorFiles = branchChanges.changedFiles.filter(
+      (file: any) => (file.insertions || 0) + (file.deletions || 0) > 10
+    );
+
+    const minorFiles = branchChanges.changedFiles.filter(
+      (file: any) => (file.insertions || 0) + (file.deletions || 0) <= 10
     );
 
     // Analyze diff content for insights
-    const { insights, fileTypeAnalysis } = analyzeDiffContent(branchChanges.diffContent, branchChanges.changedFiles);
-    
+    const { insights, fileTypeAnalysis } = analyzeDiffContent(
+      branchChanges.diffContent,
+      branchChanges.changedFiles
+    );
+
     return `# Branch Documentation: ${branchChanges.currentBranch}
 
 > **Generated on**: ${analysisDate}  
 > **Base Branch**: ${branchChanges.baseBranch}  
-> **Analysis Type**: ${branchChanges.includeUncommitted ? 'Including uncommitted changes' : 'Committed changes only'}
+> **Analysis Type**: ${
+      branchChanges.includeUncommitted
+        ? "Including uncommitted changes"
+        : "Committed changes only"
+    }
 
 ## 📋 Executive Summary
 
-This branch contains **${branchChanges.totalChanges} file(s)** with **${branchChanges.totalInsertions} additions** and **${branchChanges.totalDeletions} deletions**, representing ${branchChanges.commits.length > 0 ? `${branchChanges.commits.length} commit(s)` : 'uncommitted changes'}.
+This branch contains **${branchChanges.totalChanges} file(s)** with **${
+      branchChanges.totalInsertions
+    } additions** and **${
+      branchChanges.totalDeletions
+    } deletions**, representing ${
+      branchChanges.commits.length > 0
+        ? `${branchChanges.commits.length} commit(s)`
+        : "uncommitted changes"
+    }.
 
-${insights.newFeatures.length > 0 ? `### 🆕 New Features Detected\n${insights.newFeatures.slice(0, 3).map(f => `- ${f}`).join('\n')}\n` : ''}
-${insights.bugFixes.length > 0 ? `### 🐛 Bug Fixes Detected\n${insights.bugFixes.slice(0, 3).map(f => `- ${f}`).join('\n')}\n` : ''}
-${insights.functionsModified.length > 0 ? `### ⚙️ Functions/Classes Modified\n${insights.functionsModified.slice(0, 5).map(f => `- ${f}`).join('\n')}\n` : ''}
+${
+  insights.newFeatures.length > 0
+    ? `### 🆕 New Features Detected\n${insights.newFeatures
+        .slice(0, 3)
+        .map((f) => `- ${f}`)
+        .join("\n")}\n`
+    : ""
+}
+${
+  insights.bugFixes.length > 0
+    ? `### 🐛 Bug Fixes Detected\n${insights.bugFixes
+        .slice(0, 3)
+        .map((f) => `- ${f}`)
+        .join("\n")}\n`
+    : ""
+}
+${
+  insights.functionsModified.length > 0
+    ? `### ⚙️ Functions/Classes Modified\n${insights.functionsModified
+        .slice(0, 5)
+        .map((f) => `- ${f}`)
+        .join("\n")}\n`
+    : ""
+}
 
 ## 🔄 Change Overview
 
 ### File Type Distribution
-${Object.entries(fileTypes).map(([ext, count]) => `- **${ext.toUpperCase()}**: ${count} file(s)`).join('\n')}
+${Object.entries(fileTypes)
+  .map(([ext, count]) => `- **${ext.toUpperCase()}**: ${count} file(s)`)
+  .join("\n")}
 
 ### Project Structure Analysis
 - **Code Files**: ${fileTypeAnalysis.codeFiles} (TypeScript/JavaScript)
@@ -413,44 +492,97 @@ ${Object.entries(fileTypes).map(([ext, count]) => `- **${ext.toUpperCase()}**: $
 - **Test Files**: ${fileTypeAnalysis.testFiles} (Test/Spec)
 
 ### Commit History
-${branchChanges.commits.length > 0 ? 
-  branchChanges.commits.map((commit: any) => `- **${commit.hash.substring(0, 8)}**: ${commit.message}`).join('\n') :
-  '_No commits found (working directory changes)_'
+${
+  branchChanges.commits.length > 0
+    ? branchChanges.commits
+        .map(
+          (commit: any) =>
+            `- **${commit.hash.substring(0, 8)}**: ${commit.message}`
+        )
+        .join("\n")
+    : "_No commits found (working directory changes)_"
 }
 
 ## 📁 Files Modified
 
 ### Major Changes (>10 lines)
-${majorFiles.length > 0 ? 
-  majorFiles.map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})`).join('\n') :
-  '_No major changes detected_'
+${
+  majorFiles.length > 0
+    ? majorFiles
+        .map(
+          (file: any) =>
+            `- **${file.file}** (+${file.insertions || 0} -${
+              file.deletions || 0
+            })`
+        )
+        .join("\n")
+    : "_No major changes detected_"
 }
 
 ### Minor Changes (≤10 lines)
-${minorFiles.length > 0 ? 
-  minorFiles.map((file: any) => `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})`).join('\n') :
-  '_No minor changes detected_'
+${
+  minorFiles.length > 0
+    ? minorFiles
+        .map(
+          (file: any) =>
+            `- **${file.file}** (+${file.insertions || 0} -${
+              file.deletions || 0
+            })`
+        )
+        .join("\n")
+    : "_No minor changes detected_"
 }
 
 ## 🔍 Technical Analysis
 
 ### Code Changes Summary
-- **Total Lines Changed**: ${branchChanges.totalInsertions + branchChanges.totalDeletions}
-- **Net Change**: ${branchChanges.totalInsertions - branchChanges.totalDeletions > 0 ? '+' : ''}${branchChanges.totalInsertions - branchChanges.totalDeletions} lines
-- **Change Ratio**: ${branchChanges.totalDeletions > 0 ? Math.round((branchChanges.totalInsertions / branchChanges.totalDeletions) * 100) / 100 : 'N/A'} (additions/deletions)
+- **Total Lines Changed**: ${
+      branchChanges.totalInsertions + branchChanges.totalDeletions
+    }
+- **Net Change**: ${
+      branchChanges.totalInsertions - branchChanges.totalDeletions > 0
+        ? "+"
+        : ""
+    }${branchChanges.totalInsertions - branchChanges.totalDeletions} lines
+- **Change Ratio**: ${
+      branchChanges.totalDeletions > 0
+        ? Math.round(
+            (branchChanges.totalInsertions / branchChanges.totalDeletions) * 100
+          ) / 100
+        : "N/A"
+    } (additions/deletions)
 
 ### Change Pattern Analysis
-${insights.dependencies.length > 0 ? `- **Dependencies**: ${insights.dependencies.length} dependency-related changes detected\n` : ''}
-${insights.configChanges.length > 0 ? `- **Configuration**: ${insights.configChanges.length} configuration changes detected\n` : ''}
-${fileTypeAnalysis.codeFiles > 0 ? `- **Code Logic**: ${fileTypeAnalysis.codeFiles} code files modified\n` : ''}
-${fileTypeAnalysis.testFiles > 0 ? `- **Testing**: ${fileTypeAnalysis.testFiles} test files modified\n` : ''}
+${
+  insights.dependencies.length > 0
+    ? `- **Dependencies**: ${insights.dependencies.length} dependency-related changes detected\n`
+    : ""
+}
+${
+  insights.configChanges.length > 0
+    ? `- **Configuration**: ${insights.configChanges.length} configuration changes detected\n`
+    : ""
+}
+${
+  fileTypeAnalysis.codeFiles > 0
+    ? `- **Code Logic**: ${fileTypeAnalysis.codeFiles} code files modified\n`
+    : ""
+}
+${
+  fileTypeAnalysis.testFiles > 0
+    ? `- **Testing**: ${fileTypeAnalysis.testFiles} test files modified\n`
+    : ""
+}
 
 ### File Impact Analysis
-${branchChanges.changedFiles.map((file: any) => {
-  const totalChanges = (file.insertions || 0) + (file.deletions || 0);
-  const impact = totalChanges > 50 ? 'HIGH' : totalChanges > 10 ? 'MEDIUM' : 'LOW';
-  return `- **${file.file}**: ${impact} impact (${totalChanges} lines changed)`;
-}).join('\n')}
+${branchChanges.changedFiles
+  .map((file: any) => {
+    const totalChanges = (file.insertions || 0) + (file.deletions || 0);
+    const impact =
+      totalChanges > 50 ? "HIGH" : totalChanges > 10 ? "MEDIUM" : "LOW";
+    return `- **${file.file}**: ${impact} impact (${totalChanges} lines changed)`;
+  })
+  .join("\n")}
 
 ## 📊 Change Statistics
 
@@ -465,43 +597,96 @@ ${branchChanges.changedFiles.map((file: any) => {
 ## 🔧 Recommended Actions
 
 ### For Code Review
-- [ ] Review changes in high-impact files: ${majorFiles.map((f: any) => f.file).join(', ') || 'None'}
+- [ ] Review changes in high-impact files: ${
+      majorFiles.map((f: any) => f.file).join(", ") || "None"
+    }
 - [ ] Verify backward compatibility
 - [ ] Check for potential security issues
 - [ ] Validate error handling in modified code
-${insights.functionsModified.length > 0 ? `- [ ] Review modified functions: ${insights.functionsModified.slice(0, 3).join(', ')}\n` : ''}
+${
+  insights.functionsModified.length > 0
+    ? `- [ ] Review modified functions: ${insights.functionsModified
+        .slice(0, 3)
+        .join(", ")}\n`
+    : ""
+}
 
 ### For Testing
 - [ ] Unit tests for modified functions
 - [ ] Integration tests for affected modules
-- [ ] Regression testing for ${fileTypes.js || fileTypes.ts || fileTypes.py ? 'core functionality' : 'affected components'}
+- [ ] Regression testing for ${
+      fileTypes.js || fileTypes.ts || fileTypes.py
+        ? "core functionality"
+        : "affected components"
+    }
 - [ ] Performance testing if applicable
-${fileTypeAnalysis.testFiles > 0 ? `- [ ] Run existing test suite (${fileTypeAnalysis.testFiles} test files modified)\n` : ''}
+${
+  fileTypeAnalysis.testFiles > 0
+    ? `- [ ] Run existing test suite (${fileTypeAnalysis.testFiles} test files modified)\n`
+    : ""
+}
 
 ### For Deployment
 - [ ] Review configuration changes
 - [ ] Check for database migrations (if any)
 - [ ] Validate environment variables
 - [ ] Plan rollback strategy
-${insights.dependencies.length > 0 ? `- [ ] Update dependencies (${insights.dependencies.length} dependency changes detected)\n` : ''}
+${
+  insights.dependencies.length > 0
+    ? `- [ ] Update dependencies (${insights.dependencies.length} dependency changes detected)\n`
+    : ""
+}
 
 ## 📝 Additional Notes
 
-**Branch Type**: ${branchChanges.includeUncommitted ? 'Working branch with uncommitted changes' : 'Committed changes ready for review'}
+**Branch Type**: ${
+      branchChanges.includeUncommitted
+        ? "Working branch with uncommitted changes"
+        : "Committed changes ready for review"
+    }
 
-**Complexity Assessment**: ${branchChanges.totalChanges > 10 ? 'HIGH' : branchChanges.totalChanges > 3 ? 'MEDIUM' : 'LOW'} - Based on number of files modified
+**Complexity Assessment**: ${
+      branchChanges.totalChanges > 10
+        ? "HIGH"
+        : branchChanges.totalChanges > 3
+        ? "MEDIUM"
+        : "LOW"
+    } - Based on number of files modified
 
-**Review Priority**: ${majorFiles.length > 0 ? 'HIGH' : 'MEDIUM'} - ${majorFiles.length > 0 ? 'Contains significant changes requiring careful review' : 'Standard changes requiring normal review process'}
+**Review Priority**: ${majorFiles.length > 0 ? "HIGH" : "MEDIUM"} - ${
+      majorFiles.length > 0
+        ? "Contains significant changes requiring careful review"
+        : "Standard changes requiring normal review process"
+    }
 
-${insights.newFeatures.length > 0 ? `**Feature Development**: This appears to be feature development work with ${insights.newFeatures.length} new feature(s) detected.\n` : ''}
-${insights.bugFixes.length > 0 ? `**Bug Fixes**: This branch contains ${insights.bugFixes.length} bug fix(es).\n` : ''}
+${
+  insights.newFeatures.length > 0
+    ? `**Feature Development**: This appears to be feature development work with ${insights.newFeatures.length} new feature(s) detected.\n`
+    : ""
+}
+${
+  insights.bugFixes.length > 0
+    ? `**Bug Fixes**: This branch contains ${insights.bugFixes.length} bug fix(es).\n`
+    : ""
+}
 
 ## 🔍 Detailed Diff Analysis
 
 ### Key Changes Detected:
-${branchChanges.diffContent.split('\n').filter((line: string) => line.startsWith('+')).slice(0, 10).map((line: string) => `- ${line.substring(1).trim()}`).join('\n')}
+${branchChanges.diffContent
+  .split("\n")
+  .filter((line: string) => line.startsWith("+"))
+  .slice(0, 10)
+  .map((line: string) => `- ${line.substring(1).trim()}`)
+  .join("\n")}
 
-${branchChanges.diffContent.length > 1000 ? '\n### Code Diff Preview:\n```diff\n' + branchChanges.diffContent.substring(0, 1000) + '\n... (truncated)\n```' : ''}
+${
+  branchChanges.diffContent.length > 1000
+    ? "\n### Code Diff Preview:\n```diff\n" +
+      branchChanges.diffContent.substring(0, 1000) +
+      "\n... (truncated)\n```"
+    : ""
+}
 
 ---
 *This documentation was generated automatically. For AI-powered detailed analysis, ensure a valid Gemini API key is configured.*`;
@@ -593,52 +778,83 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
     dependencies: [] as string[],
   };
 
-  const lines = diffContent.split('\n');
-  
+  const lines = diffContent.split("\n");
+
   for (const line of lines) {
     // Detect function additions/modifications
-    if (line.startsWith('+') && (line.includes('function ') || line.includes('const ') || line.includes('class ') || line.includes('interface '))) {
+    if (
+      line.startsWith("+") &&
+      (line.includes("function ") ||
+        line.includes("const ") ||
+        line.includes("class ") ||
+        line.includes("interface "))
+    ) {
       const match = line.match(/(?:function|const|class|interface)\s+(\w+)/);
       if (match) {
         insights.functionsModified.push(match[1]);
       }
     }
-    
+
     // Detect new features
-    if (line.startsWith('+') && (line.toLowerCase().includes('feature') || line.toLowerCase().includes('add') || line.toLowerCase().includes('new'))) {
-      insights.newFeatures.push(line.replace(/^\+\s*/, '').substring(0, 50) + '...');
+    if (
+      line.startsWith("+") &&
+      (line.toLowerCase().includes("feature") ||
+        line.toLowerCase().includes("add") ||
+        line.toLowerCase().includes("new"))
+    ) {
+      insights.newFeatures.push(
+        line.replace(/^\+\s*/, "").substring(0, 50) + "..."
+      );
     }
-    
+
     // Detect bug fixes
-    if (line.startsWith('+') && (line.toLowerCase().includes('fix') || line.toLowerCase().includes('bug') || line.toLowerCase().includes('error'))) {
-      insights.bugFixes.push(line.replace(/^\+\s*/, '').substring(0, 50) + '...');
+    if (
+      line.startsWith("+") &&
+      (line.toLowerCase().includes("fix") ||
+        line.toLowerCase().includes("bug") ||
+        line.toLowerCase().includes("error"))
+    ) {
+      insights.bugFixes.push(
+        line.replace(/^\+\s*/, "").substring(0, 50) + "..."
+      );
     }
-    
+
     // Detect dependency changes
-    if (line.includes('package.json') || line.includes('dependencies')) {
-      insights.dependencies.push(line.replace(/^[+-]\s*/, '').substring(0, 50) + '...');
+    if (line.includes("package.json") || line.includes("dependencies")) {
+      insights.dependencies.push(
+        line.replace(/^[+-]\s*/, "").substring(0, 50) + "..."
+      );
     }
-    
+
     // Detect configuration changes
-    if (line.includes('.json') || line.includes('.config') || line.includes('.env')) {
-      insights.configChanges.push(line.replace(/^[+-]\s*/, '').substring(0, 50) + '...');
+    if (
+      line.includes(".json") ||
+      line.includes(".config") ||
+      line.includes(".env")
+    ) {
+      insights.configChanges.push(
+        line.replace(/^[+-]\s*/, "").substring(0, 50) + "..."
+      );
     }
   }
 
   // Analyze file types for patterns
-  const fileTypeAnalysis = changedFiles.reduce((acc: any, file: any) => {
-    const ext = file.file.split('.').pop()?.toLowerCase();
-    if (ext === 'ts' || ext === 'js') {
-      acc.codeFiles += 1;
-    } else if (ext === 'json') {
-      acc.configFiles += 1;
-    } else if (ext === 'md') {
-      acc.docFiles += 1;
-    } else if (ext === 'test.ts' || ext === 'spec.ts') {
-      acc.testFiles += 1;
-    }
-    return acc;
-  }, { codeFiles: 0, configFiles: 0, docFiles: 0, testFiles: 0 });
+  const fileTypeAnalysis = changedFiles.reduce(
+    (acc: any, file: any) => {
+      const ext = file.file.split(".").pop()?.toLowerCase();
+      if (ext === "ts" || ext === "js") {
+        acc.codeFiles += 1;
+      } else if (ext === "json") {
+        acc.configFiles += 1;
+      } else if (ext === "md") {
+        acc.docFiles += 1;
+      } else if (ext === "test.ts" || ext === "spec.ts") {
+        acc.testFiles += 1;
+      }
+      return acc;
+    },
+    { codeFiles: 0, configFiles: 0, docFiles: 0, testFiles: 0 }
+  );
 
   return { insights, fileTypeAnalysis };
 };
@@ -886,7 +1102,11 @@ program
       }
 
       // Get branch changes with optional local changes
-      const branchChanges = await getBranchChanges(repoPath, options.base, options.includeLocal);
+      const branchChanges = await getBranchChanges(
+        repoPath,
+        options.base,
+        options.includeLocal
+      );
 
       if (!branchChanges) {
         spinner.warn("Could not analyze branch changes");
@@ -895,14 +1115,26 @@ program
             `❌ Could not analyze Git changes. This might happen if:`
           )
         );
-        console.log(chalk.yellow(`   • Base branch '${options.base}' doesn't exist`));
+        console.log(
+          chalk.yellow(`   • Base branch '${options.base}' doesn't exist`)
+        );
         console.log(chalk.yellow(`   • No commits found to compare`));
         console.log(chalk.yellow(`   • Repository has no commit history`));
         console.log(chalk.yellow(`\n💡 Try:`));
-        console.log(chalk.yellow(`   • steelheart-ai branch-docs --base master`));
-        console.log(chalk.yellow(`   • steelheart-ai branch-docs --base origin/main`));
-        console.log(chalk.yellow(`   • steelheart-ai branch-docs --include-local (for uncommitted changes)`));
-        console.log(chalk.yellow(`   • git log --oneline (to check commit history)`));
+        console.log(
+          chalk.yellow(`   • steelheart-ai branch-docs --base master`)
+        );
+        console.log(
+          chalk.yellow(`   • steelheart-ai branch-docs --base origin/main`)
+        );
+        console.log(
+          chalk.yellow(
+            `   • steelheart-ai branch-docs --include-local (for uncommitted changes)`
+          )
+        );
+        console.log(
+          chalk.yellow(`   • git log --oneline (to check commit history)`)
+        );
         return;
       }
 
@@ -910,15 +1142,31 @@ program
         // Check for working directory changes if no committed changes
         const gitStatus = await simpleGit(repoPath).status();
         if (gitStatus.modified.length > 0 || gitStatus.created.length > 0) {
-          spinner.info("No committed changes found, but working directory has modifications");
+          spinner.info(
+            "No committed changes found, but working directory has modifications"
+          );
           console.log(
             chalk.blue(
               `ℹ️  No committed changes between ${options.base} and ${gitInfo.currentBranch}`
             )
           );
-          console.log(chalk.blue(`💡 You have ${gitStatus.modified.length + gitStatus.created.length} uncommitted changes.`));
-          console.log(chalk.blue(`   Use --include-local to include these changes in documentation.`));
-          console.log(chalk.blue(`   Or commit your changes first, then run this command again.`));
+          console.log(
+            chalk.blue(
+              `💡 You have ${
+                gitStatus.modified.length + gitStatus.created.length
+              } uncommitted changes.`
+            )
+          );
+          console.log(
+            chalk.blue(
+              `   Use --include-local to include these changes in documentation.`
+            )
+          );
+          console.log(
+            chalk.blue(
+              `   Or commit your changes first, then run this command again.`
+            )
+          );
           return;
         } else {
           spinner.warn("No changes found between branches");
@@ -945,7 +1193,7 @@ program
         chalk.blue(`➕ Insertions: ${branchChanges.totalInsertions}`)
       );
       console.log(chalk.blue(`➖ Deletions: ${branchChanges.totalDeletions}`));
-      
+
       if (options.includeLocal && branchChanges.includeUncommitted) {
         console.log(chalk.yellow("📋 Including uncommitted local changes"));
       }
@@ -1025,26 +1273,45 @@ program
         const workingDirFiles = [
           ...gitStatus.modified,
           ...gitStatus.created,
-          ...gitStatus.staged
+          ...gitStatus.staged,
         ].filter((file) =>
           file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
         );
-        
+
         if (workingDirFiles.length > 0) {
           filesToProcess = workingDirFiles;
-          console.log(chalk.blue(`\n📝 Found ${workingDirFiles.length} uncommitted code files`));
-          console.log(chalk.gray("   Files: " + workingDirFiles.slice(0, 3).join(", ") + 
-            (workingDirFiles.length > 3 ? "..." : "")));
+          console.log(
+            chalk.blue(
+              `\n📝 Found ${workingDirFiles.length} uncommitted code files`
+            )
+          );
+          console.log(
+            chalk.gray(
+              "   Files: " +
+                workingDirFiles.slice(0, 3).join(", ") +
+                (workingDirFiles.length > 3 ? "..." : "")
+            )
+          );
         } else {
           // Second priority: Use committed changes from git
-          const branchChanges = await getBranchChanges(repoPath, options.base, false);
+          const branchChanges = await getBranchChanges(
+            repoPath,
+            options.base,
+            false
+          );
           if (branchChanges && branchChanges.changedFiles.length > 0) {
             filesToProcess = branchChanges.changedFiles
               .filter((file) =>
-                file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+                file.file.match(
+                  /\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/
+                )
               )
               .map((file) => file.file);
-            console.log(chalk.blue(`\n📝 Found ${filesToProcess.length} committed code files`));
+            console.log(
+              chalk.blue(
+                `\n📝 Found ${filesToProcess.length} committed code files`
+              )
+            );
           }
         }
       }
@@ -1053,9 +1320,17 @@ program
         spinner.warn("No files to comment");
         console.log(chalk.yellow("❌ No code files found to comment"));
         console.log(chalk.yellow("💡 This command looks for:"));
-        console.log(chalk.yellow("   • Uncommitted changes (modified/staged files)"));
-        console.log(chalk.yellow("   • Committed changes compared to base branch"));
-        console.log(chalk.yellow("   • Or specify files manually: steelheart auto-comment file1.js file2.ts"));
+        console.log(
+          chalk.yellow("   • Uncommitted changes (modified/staged files)")
+        );
+        console.log(
+          chalk.yellow("   • Committed changes compared to base branch")
+        );
+        console.log(
+          chalk.yellow(
+            "   • Or specify files manually: steelheart auto-comment file1.js file2.ts"
+          )
+        );
         return;
       }
 
@@ -1090,32 +1365,51 @@ program
             const workingDiff = await git.diff([filePath]);
             if (workingDiff) {
               diffContent = workingDiff;
-              console.log(chalk.gray(`📋 Found working directory changes in: ${filePath}`));
+              console.log(
+                chalk.gray(`📋 Found working directory changes in: ${filePath}`)
+              );
             } else {
               // Try staged changes
               const stagedDiff = await git.diff(["--staged", filePath]);
               if (stagedDiff) {
                 diffContent = stagedDiff;
-                console.log(chalk.gray(`📋 Found staged changes in: ${filePath}`));
+                console.log(
+                  chalk.gray(`📋 Found staged changes in: ${filePath}`)
+                );
               } else {
                 // Try committed changes against base branch
-                const fileChanges = await getFileChanges(repoPath, filePath, options.base);
+                const fileChanges = await getFileChanges(
+                  repoPath,
+                  filePath,
+                  options.base
+                );
                 if (fileChanges.hasChanges) {
                   diffContent = fileChanges.diff;
-                  console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                  console.log(
+                    chalk.gray(`📋 Found committed changes in: ${filePath}`)
+                  );
                 } else {
-                  console.log(chalk.yellow(`⚠️  No changes detected in: ${filePath}`));
+                  console.log(
+                    chalk.yellow(`⚠️  No changes detected in: ${filePath}`)
+                  );
                   // Still process the file but with empty diff
                   diffContent = `File: ${filePath}\nNo changes detected - adding general code comments`;
                 }
               }
             }
           } catch (diffError) {
-            console.log(chalk.yellow(`⚠️  Could not get diff for ${filePath}, processing entire file`));
+            console.log(
+              chalk.yellow(
+                `⚠️  Could not get diff for ${filePath}, processing entire file`
+              )
+            );
             diffContent = `File: ${filePath}\nProcessing entire file for code comments`;
           }
 
-          const commentedCode = await generateCodeComments(fullPath, diffContent);
+          const commentedCode = await generateCodeComments(
+            fullPath,
+            diffContent
+          );
 
           if (options.dryRun) {
             console.log(chalk.blue(`\n📝 Comments for ${filePath}:`));
@@ -1132,9 +1426,15 @@ program
             // Write commented code only if there are actual changes
             if (commentedCode.content !== readFileSync(fullPath, "utf8")) {
               writeFileSync(fullPath, commentedCode.content);
-              console.log(chalk.green(`✅ Comments added to: ${filePath} (${commentedCode.commentsAdded} comments)`));
+              console.log(
+                chalk.green(
+                  `✅ Comments added to: ${filePath} (${commentedCode.commentsAdded} comments)`
+                )
+              );
             } else {
-              console.log(chalk.gray(`ℹ️  No new comments added to: ${filePath}`));
+              console.log(
+                chalk.gray(`ℹ️  No new comments added to: ${filePath}`)
+              );
             }
           }
 
@@ -1172,7 +1472,9 @@ program
       console.log(`${chalk.gray("Comments added:")} ${totalComments}`);
       if (failed.length > 0) {
         console.log(`${chalk.red("Failed:")} ${failed.length}`);
-        failed.forEach(f => console.log(chalk.red(`   • ${f.file}: ${f.error}`)));
+        failed.forEach((f) =>
+          console.log(chalk.red(`   • ${f.file}: ${f.error}`))
+        );
       }
       if (options.dryRun) {
         console.log(
@@ -1181,13 +1483,25 @@ program
           )
         );
       }
-      
+
       // Show helpful tips
       if (successful.length === 0) {
         console.log(chalk.yellow("\n💡 Tips:"));
-        console.log(chalk.yellow("   • Make sure files have actual changes or code to comment"));
-        console.log(chalk.yellow("   • Try: steelheart auto-comment --dry-run to see what would happen"));
-        console.log(chalk.yellow("   • Or specify files: steelheart auto-comment src/file.js"));
+        console.log(
+          chalk.yellow(
+            "   • Make sure files have actual changes or code to comment"
+          )
+        );
+        console.log(
+          chalk.yellow(
+            "   • Try: steelheart auto-comment --dry-run to see what would happen"
+          )
+        );
+        console.log(
+          chalk.yellow(
+            "   • Or specify files: steelheart auto-comment src/file.js"
+          )
+        );
       }
     } catch (error) {
       spinner.fail("Auto-commenting failed");
