@@ -9,8 +9,10 @@ dotenv.config({ path: join(process.cwd(), ".env") });
 interface GeminiConfig {
   apiKey: string;
   model?: string;
+  fallbackModel?: string;
   temperature?: number;
   topP?: number;
+  maxRetries?: number;
 }
 
 export class GeminiClient {
@@ -33,8 +35,10 @@ export class GeminiClient {
         config = {
           apiKey: fileConfig.apiKey || process.env.GEMINI_API_KEY,
           model: fileConfig.model || "gemini-2.0-flash-exp",
+          fallbackModel: fileConfig.fallbackModel || "gemini-1.5-flash",
           temperature: fileConfig.temperature || 0.7,
           topP: fileConfig.topP || 0.8,
+          maxRetries: fileConfig.maxRetries || 3,
         };
       } catch (error) {
         console.warn("Could not load config file, using environment variables");
@@ -57,32 +61,144 @@ export class GeminiClient {
     return {
       apiKey: process.env.GEMINI_API_KEY || "",
       model: "gemini-2.0-flash-exp",
+      fallbackModel: "gemini-1.5-flash",
       temperature: 0.7,
       topP: 0.8,
+      maxRetries: 3,
     };
   }
 
   async generateContent(
     prompt: string,
-    systemInstruction?: string
+    systemInstruction?: string,
+    maxRetries: number = 3
   ): Promise<string> {
+    // First try with primary model
     try {
-      const model = this.genAI.getGenerativeModel({
-        model: this.config.model!,
-        systemInstruction: systemInstruction,
-        generationConfig: {
-          temperature: this.config.temperature,
-          topP: this.config.topP,
-        },
-      });
+      return await this.generateWithModel(
+        prompt,
+        systemInstruction,
+        this.config.model!,
+        maxRetries
+      );
+    } catch (primaryError) {
+      console.warn(
+        `Primary model (${this.config.model}) failed. Trying fallback model...`
+      );
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error("Error generating content:", error);
-      throw new Error(`Failed to generate content: ${error}`);
+      // Try with fallback model if available
+      if (
+        this.config.fallbackModel &&
+        this.config.fallbackModel !== this.config.model
+      ) {
+        try {
+          console.log(
+            `Switching to fallback model: ${this.config.fallbackModel}`
+          );
+          return await this.generateWithModel(
+            prompt,
+            systemInstruction,
+            this.config.fallbackModel,
+            maxRetries
+          );
+        } catch (fallbackError) {
+          console.error(`Both primary and fallback models failed.`);
+          throw new Error(
+            `All models failed. Primary: ${primaryError}. Fallback: ${fallbackError}`
+          );
+        }
+      }
+
+      throw primaryError;
     }
+  }
+
+  private async generateWithModel(
+    prompt: string,
+    systemInstruction: string | undefined,
+    modelName: string,
+    maxRetries: number
+  ): Promise<string> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const model = this.genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemInstruction,
+          generationConfig: {
+            temperature: this.config.temperature,
+            topP: this.config.topP,
+          },
+        });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      } catch (error: any) {
+        lastError = error;
+
+        // Check if it's a retryable error
+        const isRetryable = this.isRetryableError(error);
+
+        if (!isRetryable || attempt === maxRetries) {
+          console.error(
+            `Error with model ${modelName} (attempt ${attempt}/${maxRetries}):`,
+            error.message || error
+          );
+          break;
+        }
+
+        // Calculate exponential backoff delay
+        const baseDelay = 1000; // 1 second
+        const delay =
+          baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+
+        console.warn(
+          `Model ${modelName} attempt ${attempt}/${maxRetries} failed. Retrying in ${Math.round(
+            delay
+          )}ms...`
+        );
+        console.warn(`Error: ${error.message || error}`);
+
+        await this.delay(delay);
+      }
+    }
+
+    throw new Error(
+      `Model ${modelName} failed after ${maxRetries} attempts: ${
+        lastError.message || lastError
+      }`
+    );
+  }
+
+  private isRetryableError(error: any): boolean {
+    // Retry on specific error conditions
+    if (error.status) {
+      // HTTP status codes that should be retried
+      const retryableStatusCodes = [429, 503, 502, 504]; // Rate limit, Service unavailable, Bad gateway, Gateway timeout
+      return retryableStatusCodes.includes(error.status);
+    }
+
+    // Retry on network errors
+    if (error.message) {
+      const retryableMessages = [
+        "network error",
+        "timeout",
+        "connection refused",
+        "service unavailable",
+        "overloaded",
+        "temporarily unavailable",
+      ];
+      const errorMessage = error.message.toLowerCase();
+      return retryableMessages.some((msg) => errorMessage.includes(msg));
+    }
+
+    return false;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async analyzeRepository(
