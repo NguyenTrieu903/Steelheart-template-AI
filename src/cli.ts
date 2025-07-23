@@ -646,7 +646,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("1.3.1");
+  .version("1.3.2");
 
 // Setup command
 program
@@ -1020,35 +1020,42 @@ program
       // Get files to process
       let filesToProcess = files;
       if (filesToProcess.length === 0) {
-        // Use changed files from git
-        const branchChanges = await getBranchChanges(repoPath, options.base);
-        if (branchChanges && branchChanges.changedFiles.length > 0) {
-          filesToProcess = branchChanges.changedFiles
-            .filter((file) =>
-              file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
-            )
-            .map((file) => file.file);
+        // First priority: Check working directory changes (uncommitted files)
+        const gitStatus = await simpleGit(repoPath).status();
+        const workingDirFiles = [
+          ...gitStatus.modified,
+          ...gitStatus.created,
+          ...gitStatus.staged
+        ].filter((file) =>
+          file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+        );
+        
+        if (workingDirFiles.length > 0) {
+          filesToProcess = workingDirFiles;
+          console.log(chalk.blue(`\n📝 Found ${workingDirFiles.length} uncommitted code files`));
+          console.log(chalk.gray("   Files: " + workingDirFiles.slice(0, 3).join(", ") + 
+            (workingDirFiles.length > 3 ? "..." : "")));
         } else {
-          // If no committed changes, check working directory
-          const gitStatus = await simpleGit(repoPath).status();
-          const workingDirFiles = [
-            ...gitStatus.modified,
-            ...gitStatus.created,
-            ...gitStatus.staged
-          ].filter((file) =>
-            file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
-          );
-          
-          if (workingDirFiles.length > 0) {
-            filesToProcess = workingDirFiles;
-            console.log(chalk.blue(`ℹ️  Using ${workingDirFiles.length} uncommitted files from working directory`));
+          // Second priority: Use committed changes from git
+          const branchChanges = await getBranchChanges(repoPath, options.base, false);
+          if (branchChanges && branchChanges.changedFiles.length > 0) {
+            filesToProcess = branchChanges.changedFiles
+              .filter((file) =>
+                file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+              )
+              .map((file) => file.file);
+            console.log(chalk.blue(`\n📝 Found ${filesToProcess.length} committed code files`));
           }
         }
       }
 
       if (filesToProcess.length === 0) {
         spinner.warn("No files to comment");
-        console.log(chalk.yellow("No code files found to comment"));
+        console.log(chalk.yellow("❌ No code files found to comment"));
+        console.log(chalk.yellow("💡 This command looks for:"));
+        console.log(chalk.yellow("   • Uncommitted changes (modified/staged files)"));
+        console.log(chalk.yellow("   • Committed changes compared to base branch"));
+        console.log(chalk.yellow("   • Or specify files manually: steelheart auto-comment file1.js file2.ts"));
         return;
       }
 
@@ -1067,23 +1074,48 @@ program
           const fullPath = join(repoPath, filePath);
           if (!existsSync(fullPath)) {
             console.log(chalk.yellow(`⚠️  File not found: ${filePath}`));
+            results.push({
+              file: filePath,
+              error: "File not found",
+              success: false,
+            });
             continue;
           }
 
-          const fileChanges = await getFileChanges(
-            repoPath,
-            filePath,
-            options.base
-          );
-          if (!fileChanges.hasChanges) {
-            console.log(chalk.gray(`ℹ️  No changes in: ${filePath}`));
-            continue;
+          // For uncommitted files, get working directory diff
+          let diffContent = "";
+          try {
+            // Try to get diff from working directory (for uncommitted changes)
+            const git = simpleGit(repoPath);
+            const workingDiff = await git.diff([filePath]);
+            if (workingDiff) {
+              diffContent = workingDiff;
+              console.log(chalk.gray(`📋 Found working directory changes in: ${filePath}`));
+            } else {
+              // Try staged changes
+              const stagedDiff = await git.diff(["--staged", filePath]);
+              if (stagedDiff) {
+                diffContent = stagedDiff;
+                console.log(chalk.gray(`📋 Found staged changes in: ${filePath}`));
+              } else {
+                // Try committed changes against base branch
+                const fileChanges = await getFileChanges(repoPath, filePath, options.base);
+                if (fileChanges.hasChanges) {
+                  diffContent = fileChanges.diff;
+                  console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                } else {
+                  console.log(chalk.yellow(`⚠️  No changes detected in: ${filePath}`));
+                  // Still process the file but with empty diff
+                  diffContent = `File: ${filePath}\nNo changes detected - adding general code comments`;
+                }
+              }
+            }
+          } catch (diffError) {
+            console.log(chalk.yellow(`⚠️  Could not get diff for ${filePath}, processing entire file`));
+            diffContent = `File: ${filePath}\nProcessing entire file for code comments`;
           }
 
-          const commentedCode = await generateCodeComments(
-            fullPath,
-            fileChanges.diff
-          );
+          const commentedCode = await generateCodeComments(fullPath, diffContent);
 
           if (options.dryRun) {
             console.log(chalk.blue(`\n📝 Comments for ${filePath}:`));
@@ -1097,9 +1129,13 @@ program
               console.log(chalk.gray(`💾 Backup saved: ${backupPath}`));
             }
 
-            // Write commented code
-            writeFileSync(fullPath, commentedCode.content);
-            console.log(chalk.green(`✅ Comments added to: ${filePath}`));
+            // Write commented code only if there are actual changes
+            if (commentedCode.content !== readFileSync(fullPath, "utf8")) {
+              writeFileSync(fullPath, commentedCode.content);
+              console.log(chalk.green(`✅ Comments added to: ${filePath} (${commentedCode.commentsAdded} comments)`));
+            } else {
+              console.log(chalk.gray(`ℹ️  No new comments added to: ${filePath}`));
+            }
           }
 
           results.push({
@@ -1136,6 +1172,7 @@ program
       console.log(`${chalk.gray("Comments added:")} ${totalComments}`);
       if (failed.length > 0) {
         console.log(`${chalk.red("Failed:")} ${failed.length}`);
+        failed.forEach(f => console.log(chalk.red(`   • ${f.file}: ${f.error}`)));
       }
       if (options.dryRun) {
         console.log(
@@ -1143,6 +1180,14 @@ program
             "\n🔍 This was a dry run. Use without --dry-run to apply changes."
           )
         );
+      }
+      
+      // Show helpful tips
+      if (successful.length === 0) {
+        console.log(chalk.yellow("\n💡 Tips:"));
+        console.log(chalk.yellow("   • Make sure files have actual changes or code to comment"));
+        console.log(chalk.yellow("   • Try: steelheart auto-comment --dry-run to see what would happen"));
+        console.log(chalk.yellow("   • Or specify files: steelheart auto-comment src/file.js"));
       }
     } catch (error) {
       spinner.fail("Auto-commenting failed");
@@ -1357,4 +1402,3 @@ program.parse();
 if (!process.argv.slice(2).length) {
   program.outputHelp();
 }
-// Local test change
