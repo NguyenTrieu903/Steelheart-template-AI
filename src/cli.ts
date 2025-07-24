@@ -176,7 +176,7 @@ const getBranchChanges = async (
       ]);
       const workingDiff = await git.diffSummary();
 
-      // Identify new files vs modified files
+      // Get committed new files
       const committedNewFiles = await git
         .raw([
           "diff",
@@ -191,13 +191,44 @@ const getBranchChanges = async (
             .filter((f) => f)
         );
 
-      const workingNewFiles = [...status.created, ...status.not_added];
+      // Get staged added files using git diff --cached --name-status
+      const stagedAddedFiles = await git
+        .raw(["diff", "--cached", "--name-status"])
+        .then((output) => {
+          return output
+            .trim()
+            .split("\n")
+            .filter((line) => line.trim() && line.startsWith("A"))
+            .map((line) => line.split("\t")[1])
+            .filter((f) => f);
+        })
+        .catch(() => []);
 
-      newFiles = [...new Set([...committedNewFiles, ...workingNewFiles])];
+      // Get untracked (unadded) files using git ls-files --others --exclude-standard
+      const untrackedFiles = await git
+        .raw(["ls-files", "--others", "--exclude-standard"])
+        .then((output) =>
+          output
+            .trim()
+            .split("\n")
+            .filter((f) => f)
+        )
+        .catch(() => []);
+
+      // Combine all new files: committed + staged + untracked
+      newFiles = [
+        ...new Set([
+          ...committedNewFiles,
+          ...stagedAddedFiles,
+          ...untrackedFiles,
+        ]),
+      ];
+
+      // Modified files are from committed changes + working directory modified files (excluding new files)
       modifiedFiles = committedDiff.files
         .map((f) => f.file)
         .filter((f) => !newFiles.includes(f))
-        .concat(status.modified);
+        .concat(status.modified.filter((f) => !newFiles.includes(f)));
 
       // Combine committed and working directory changes
       const allFiles = new Map();
@@ -231,6 +262,32 @@ const getBranchChanges = async (
         });
       });
 
+      // Add staged added files to the files map (they might not be in workingDiff)
+      stagedAddedFiles.forEach((file) => {
+        if (!allFiles.has(file)) {
+          allFiles.set(file, {
+            file: file,
+            insertions: 0, // We'll get this from git diff --cached
+            deletions: 0,
+            binary: false,
+            isNew: true,
+          });
+        }
+      });
+
+      // Add untracked files to the files map
+      untrackedFiles.forEach((file) => {
+        if (!allFiles.has(file)) {
+          allFiles.set(file, {
+            file: file,
+            insertions: 0, // We'll count lines for new files separately
+            deletions: 0,
+            binary: false,
+            isNew: true,
+          });
+        }
+      });
+
       diffSummary = {
         files: Array.from(allFiles.values()),
         insertions: committedDiff.insertions + workingDiff.insertions,
@@ -243,8 +300,12 @@ const getBranchChanges = async (
         `${actualBaseBranch}...${currentBranch.trim()}`,
       ]);
       const workingDiffContent = await git.diff();
+      const stagedDiffContent = await git.diff(["--cached"]);
+
       diffContent =
         committedDiffContent +
+        "\n\n--- Staged Changes ---\n" +
+        stagedDiffContent +
         "\n\n--- Working Directory Changes ---\n" +
         workingDiffContent;
     } else {
@@ -1512,14 +1573,54 @@ program
       let filesToProcess = files;
       if (filesToProcess.length === 0) {
         // First priority: Check working directory changes (uncommitted files)
-        const gitStatus = await simpleGit(repoPath).status();
-        const workingDirFiles = [
-          ...gitStatus.modified,
-          ...gitStatus.created,
-          ...gitStatus.staged,
-        ].filter((file) =>
+        const git = simpleGit(repoPath);
+
+        // Get staged added files
+        const stagedAddedFiles = await git
+          .raw(["diff", "--cached", "--name-status"])
+          .then((output) => {
+            return output
+              .trim()
+              .split("\n")
+              .filter((line) => line.trim() && line.startsWith("A"))
+              .map((line) => line.split("\t")[1])
+              .filter(
+                (f) =>
+                  f &&
+                  f.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+              );
+          })
+          .catch(() => []);
+
+        // Get untracked (unadded) files
+        const untrackedFiles = await git
+          .raw(["ls-files", "--others", "--exclude-standard"])
+          .then((output) =>
+            output
+              .trim()
+              .split("\n")
+              .filter(
+                (f) =>
+                  f &&
+                  f.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+              )
+          )
+          .catch(() => []);
+
+        // Get working directory modified files (traditional git status)
+        const gitStatus = await git.status();
+        const workingModifiedFiles = gitStatus.modified.filter((file) =>
           file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
         );
+
+        // Combine all local files: staged added + untracked + modified
+        const workingDirFiles = [
+          ...new Set([
+            ...stagedAddedFiles,
+            ...untrackedFiles,
+            ...workingModifiedFiles,
+          ]),
+        ];
 
         if (workingDirFiles.length > 0) {
           filesToProcess = workingDirFiles;
@@ -1527,6 +1628,13 @@ program
             chalk.blue(
               `\n📝 Found ${workingDirFiles.length} uncommitted code files`
             )
+          );
+          console.log(
+            chalk.gray(`   Staged added: ${stagedAddedFiles.length}`)
+          );
+          console.log(chalk.gray(`   Untracked: ${untrackedFiles.length}`));
+          console.log(
+            chalk.gray(`   Modified: ${workingModifiedFiles.length}`)
           );
           console.log(
             chalk.gray(
