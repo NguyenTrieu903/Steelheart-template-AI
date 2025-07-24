@@ -21,7 +21,7 @@ export class CodeReviewService {
       // Analyze repository structure and get relevant files
       const repoAnalysis = await analyzeRepository(repoPath);
 
-      // Generate review using Gemini
+      // Generate review using OpenAI
       const reviewContent = await this.generateReviewContent(
         repoPath,
         repoAnalysis
@@ -40,6 +40,40 @@ export class CodeReviewService {
     } catch (error) {
       console.error("Error performing code review:", error);
       throw new Error(`Code review failed: ${error}`);
+    }
+  }
+
+  async performBranchReview(
+    repoPath: string,
+    branchChanges: any,
+    outputPath?: string
+  ): Promise<ReviewReport> {
+    try {
+      console.log("Starting enhanced branch review analysis...");
+
+      // Analyze repository structure and get relevant files
+      const repoAnalysis = await analyzeRepository(repoPath);
+
+      // Generate enhanced review for branch changes including new files
+      const reviewContent = await this.generateBranchReviewContent(
+        repoPath,
+        repoAnalysis,
+        branchChanges
+      );
+
+      // Parse and structure the review
+      const reviewReport = this.parseReviewContent(reviewContent, repoPath);
+
+      // Save report if output path is specified
+      if (outputPath) {
+        this.saveReviewReport(reviewReport, outputPath);
+      }
+
+      console.log("Enhanced branch code review completed successfully!");
+      return reviewReport;
+    } catch (error) {
+      console.error("Error performing branch review:", error);
+      throw new Error(`Branch code review failed: ${error}`);
     }
   }
 
@@ -88,6 +122,96 @@ export class CodeReviewService {
     return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
 
+  private async generateBranchReviewContent(
+    repoPath: string,
+    analysis: RepositoryAnalysis,
+    branchChanges: any
+  ): Promise<string> {
+    const newFiles = branchChanges.changedFiles.filter(
+      (file: any) => file.isNew
+    );
+    const modifiedFiles = branchChanges.changedFiles.filter(
+      (file: any) => !file.isNew
+    );
+
+    // Get full content of new files for comprehensive review
+    const { readFileSync } = require("fs");
+    const { join, existsSync } = require("path");
+    const newFileContents: any = {};
+
+    for (const file of newFiles) {
+      try {
+        const fullPath = join(repoPath, file.file);
+        if (existsSync(fullPath)) {
+          const content = readFileSync(fullPath, "utf8");
+          newFileContents[file.file] = content;
+        }
+      } catch (error) {
+        console.warn(`Could not read new file ${file.file}:`, error);
+      }
+    }
+
+    const prompt = this.buildBranchReviewPrompt(
+      repoPath,
+      analysis,
+      branchChanges,
+      newFileContents
+    );
+    const systemInstruction = `You are a senior code reviewer with 10+ years of experience. Perform a comprehensive code review focusing on:
+
+    FOR NEW FILES (complete review):
+    1. Architecture and design patterns
+    2. Code quality and best practices
+    3. Security vulnerabilities
+    4. Performance considerations
+    5. Error handling and edge cases
+    6. Documentation and comments
+    7. Testing considerations
+    8. Integration with existing codebase
+
+    FOR MODIFIED FILES (focused review):
+    1. Impact of changes on existing functionality
+    2. Potential breaking changes
+    3. Security implications of modifications
+    4. Performance impact
+    5. Code style consistency
+    6. Regression risks
+
+    Provide your response in the following JSON format:
+    {
+      "issues": [
+        {
+          "file": "path/to/file.js",
+          "line": 10,
+          "column": 5,
+          "severity": "critical|warning|info",
+          "category": "bug|security|performance|style|maintainability|architecture", 
+          "description": "Description of the issue",
+          "suggestion": "How to fix it",
+          "rule": "Rule name if applicable",
+          "isNewFile": true|false
+        }
+      ],
+      "suggestions": [
+        {
+          "type": "improvement|refactoring|optimization|architecture",
+          "description": "Suggestion description",
+          "file": "optional file path",
+          "impact": "high|medium|low",
+          "isForNewFile": true|false
+        }
+      ],
+      "overallAssessment": "Overall assessment including new file integration",
+      "newFilesAnalyzed": ${newFiles.length},
+      "modifiedFilesAnalyzed": ${modifiedFiles.length},
+      "criticalIssues": 0,
+      "warningIssues": 0,
+      "infoIssues": 0
+    }`;
+
+    return await this.openaiClient.generateContent(prompt, systemInstruction);
+  }
+
   private buildReviewPrompt(
     repoPath: string,
     analysis: RepositoryAnalysis
@@ -117,6 +241,101 @@ ${analysis.structure.mainFiles.join("\n")}
 
 Please provide a thorough code review focusing on code quality, security, performance, and maintainability. 
 Prioritize critical issues that could cause bugs or security vulnerabilities.`;
+  }
+
+  private buildBranchReviewPrompt(
+    repoPath: string,
+    analysis: RepositoryAnalysis,
+    branchChanges: any,
+    newFileContents: any
+  ): string {
+    const newFiles = branchChanges.changedFiles.filter(
+      (file: any) => file.isNew
+    );
+    const modifiedFiles = branchChanges.changedFiles.filter(
+      (file: any) => !file.isNew
+    );
+
+    return `Please perform a comprehensive code review of this branch with enhanced focus on new files:
+
+Repository Path: ${repoPath}
+Branch: ${branchChanges.currentBranch} (compared to ${branchChanges.baseBranch})
+
+## Repository Context:
+- Total Files: ${analysis.structure.totalFiles}
+- Technologies: ${analysis.technologies
+      .map((t) => `${t.name} ${t.version || ""}`)
+      .join(", ")}
+- Lines of Code: ${analysis.metrics.linesOfCode}
+
+## Branch Changes Summary:
+- Total Files Changed: ${branchChanges.totalChanges}
+- New Files Added: ${newFiles.length}
+- Existing Files Modified: ${modifiedFiles.length}
+- Lines Added: ${branchChanges.totalInsertions}
+- Lines Removed: ${branchChanges.totalDeletions}
+
+## NEW FILES (Full Review Required):
+${
+  newFiles.length > 0
+    ? newFiles
+        .map(
+          (file: any) =>
+            `### ${file.file} (+${file.insertions || 0} lines)
+${
+  newFileContents[file.file]
+    ? `\`\`\`\n${newFileContents[file.file].substring(0, 2000)}\n${
+        newFileContents[file.file].length > 2000 ? "... (truncated)\n" : ""
+      }\`\`\``
+    : "Content not available"
+}
+`
+        )
+        .join("\n")
+    : "None"
+}
+
+## MODIFIED FILES (Change Review Required):
+${
+  modifiedFiles.length > 0
+    ? modifiedFiles
+        .map(
+          (file: any) =>
+            `- ${file.file} (+${file.insertions || 0} -${file.deletions || 0})`
+        )
+        .join("\n")
+    : "None"
+}
+
+## Diff Changes:
+\`\`\`diff
+${branchChanges.diffContent.substring(0, 3000)}
+${
+  branchChanges.diffContent.length > 3000 ? "\n... (truncated for brevity)" : ""
+}
+\`\`\`
+
+## Review Requirements:
+
+**For NEW FILES - Perform complete analysis:**
+1. Architecture and design patterns compliance
+2. Code quality and adherence to best practices  
+3. Security vulnerabilities and potential attack vectors
+4. Performance implications and optimizations
+5. Error handling and edge case coverage
+6. Integration points with existing codebase
+7. Documentation and maintainability
+8. Testing strategy recommendations
+
+**For MODIFIED FILES - Focus on changes:**
+1. Impact assessment on existing functionality
+2. Breaking change identification
+3. Security implications of modifications
+4. Performance impact analysis
+5. Regression risk evaluation
+6. Code style consistency
+
+Please provide detailed analysis with specific line numbers where applicable.`;
   }
 
   private parseReviewContent(content: string, repoUrl: string): ReviewReport {

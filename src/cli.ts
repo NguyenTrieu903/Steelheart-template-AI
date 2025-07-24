@@ -165,6 +165,8 @@ const getBranchChanges = async (
 
     // Get file changes (diff)
     let diffSummary, diffContent;
+    let newFiles: string[] = [];
+    let modifiedFiles: string[] = [];
 
     if (includeUncommitted) {
       // Include working directory changes
@@ -173,6 +175,29 @@ const getBranchChanges = async (
         `${actualBaseBranch}...${currentBranch.trim()}`,
       ]);
       const workingDiff = await git.diffSummary();
+
+      // Identify new files vs modified files
+      const committedNewFiles = await git
+        .raw([
+          "diff",
+          "--name-only",
+          "--diff-filter=A",
+          `${actualBaseBranch}...${currentBranch.trim()}`,
+        ])
+        .then((output) =>
+          output
+            .trim()
+            .split("\n")
+            .filter((f) => f)
+        );
+
+      const workingNewFiles = [...status.created, ...status.not_added];
+
+      newFiles = [...new Set([...committedNewFiles, ...workingNewFiles])];
+      modifiedFiles = committedDiff.files
+        .map((f) => f.file)
+        .filter((f) => !newFiles.includes(f))
+        .concat(status.modified);
 
       // Combine committed and working directory changes
       const allFiles = new Map();
@@ -184,6 +209,7 @@ const getBranchChanges = async (
           insertions: (file as any).insertions || 0,
           deletions: (file as any).deletions || 0,
           binary: (file as any).binary || false,
+          isNew: newFiles.includes(file.file),
         });
       });
 
@@ -194,12 +220,14 @@ const getBranchChanges = async (
           insertions: 0,
           deletions: 0,
           binary: false,
+          isNew: newFiles.includes(file.file),
         };
         allFiles.set(file.file, {
           file: file.file,
           insertions: existing.insertions + ((file as any).insertions || 0),
           deletions: existing.deletions + ((file as any).deletions || 0),
           binary: existing.binary || (file as any).binary || false,
+          isNew: existing.isNew || newFiles.includes(file.file),
         });
       });
 
@@ -224,6 +252,32 @@ const getBranchChanges = async (
       diffSummary = await git.diffSummary([
         `${actualBaseBranch}...${currentBranch.trim()}`,
       ]);
+
+      // Get new files
+      newFiles = await git
+        .raw([
+          "diff",
+          "--name-only",
+          "--diff-filter=A",
+          `${actualBaseBranch}...${currentBranch.trim()}`,
+        ])
+        .then((output) =>
+          output
+            .trim()
+            .split("\n")
+            .filter((f) => f)
+        );
+
+      modifiedFiles = diffSummary.files
+        .map((f) => f.file)
+        .filter((f) => !newFiles.includes(f));
+
+      // Add isNew flag to file objects
+      diffSummary.files = diffSummary.files.map((file) => ({
+        ...file,
+        isNew: newFiles.includes(file.file),
+      }));
+
       diffContent = await git.diff([
         `${actualBaseBranch}...${currentBranch.trim()}`,
       ]);
@@ -234,6 +288,8 @@ const getBranchChanges = async (
       baseBranch: actualBaseBranch,
       commits: commits.all,
       changedFiles: diffSummary.files,
+      newFiles,
+      modifiedFiles,
       diffContent,
       totalInsertions: diffSummary.insertions,
       totalDeletions: diffSummary.deletions,
@@ -288,6 +344,18 @@ const getFileChanges = async (
       actualBaseBranch = `HEAD~1`;
     }
 
+    // Check if file is new
+    const isNewFile = await git
+      .raw([
+        "diff",
+        "--name-only",
+        "--diff-filter=A",
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+        "--",
+        filePath,
+      ])
+      .then((output) => output.trim() !== "");
+
     // Get diff for specific file
     const diff = await git.diff([
       `${actualBaseBranch}...${currentBranch.trim()}`,
@@ -295,18 +363,103 @@ const getFileChanges = async (
       filePath,
     ]);
 
+    // For new files, also get the full content
+    let fullContent = "";
+    if (isNewFile) {
+      try {
+        fullContent = readFileSync(join(repoPath, filePath), "utf8");
+      } catch (error) {
+        console.warn(`Could not read file content for ${filePath}:`, error);
+      }
+    }
+
     return {
       filePath,
       diff,
-      hasChanges: diff.length > 0,
+      isNewFile,
+      fullContent,
+      hasChanges: diff.trim() !== "",
     };
   } catch (error) {
-    return {
-      filePath,
-      diff: "",
-      hasChanges: false,
-    };
+    console.warn(`Could not get changes for ${filePath}:`, error);
+    return null;
   }
+};
+
+// New function to get only the changed lines from a diff for auto-commenting
+const getChangedLinesFromDiff = (diffContent: string) => {
+  const lines = diffContent.split("\n");
+  const changedLines: Array<{
+    lineNumber: number;
+    content: string;
+    type: "added" | "removed";
+  }> = [];
+  let currentLineNumber = 0;
+
+  for (const line of lines) {
+    // Parse diff header to get line numbers
+    const headerMatch = line.match(/^@@ -(\d+),?\d* \+(\d+),?\d* @@/);
+    if (headerMatch) {
+      currentLineNumber = parseInt(headerMatch[2]) - 1;
+      continue;
+    }
+
+    // Skip file headers
+    if (
+      line.startsWith("+++") ||
+      line.startsWith("---") ||
+      line.startsWith("diff --git")
+    ) {
+      continue;
+    }
+
+    currentLineNumber++;
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      changedLines.push({
+        lineNumber: currentLineNumber,
+        content: line.substring(1),
+        type: "added",
+      });
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      changedLines.push({
+        lineNumber: currentLineNumber - 1,
+        content: line.substring(1),
+        type: "removed",
+      });
+      currentLineNumber--; // Don't increment for removed lines
+    }
+  }
+
+  return changedLines;
+};
+
+const getFileExtension = (filePath: string): string => {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  const extensionMap: { [key: string]: string } = {
+    js: "javascript",
+    ts: "typescript",
+    jsx: "jsx",
+    tsx: "tsx",
+    py: "python",
+    java: "java",
+    cpp: "cpp",
+    c: "c",
+    h: "c",
+    rs: "rust",
+    go: "go",
+    php: "php",
+    rb: "ruby",
+    html: "html",
+    css: "css",
+    scss: "scss",
+    json: "json",
+    xml: "xml",
+    md: "markdown",
+    yml: "yaml",
+    yaml: "yaml",
+  };
+  return extensionMap[ext || ""] || ext || "";
 };
 
 // Helper functions for branch documentation and auto-commenting
@@ -315,6 +468,30 @@ const generateBranchDocumentation = async (
   branchChanges: any,
   repoPath: string
 ): Promise<string> => {
+  // Separate new files from modified files
+  const newFiles = branchChanges.changedFiles.filter((file: any) => file.isNew);
+  const modifiedFiles = branchChanges.changedFiles.filter(
+    (file: any) => !file.isNew
+  );
+
+  // Get full content of new files for better documentation
+  const newFileContents: any = {};
+  for (const file of newFiles) {
+    try {
+      const fullPath = join(repoPath, file.file);
+      if (existsSync(fullPath)) {
+        const content = readFileSync(fullPath, "utf8");
+        // Truncate very long files for prompt
+        newFileContents[file.file] =
+          content.length > 2000
+            ? content.substring(0, 2000) + "\n... (truncated)"
+            : content;
+      }
+    } catch (error) {
+      console.warn(`Could not read new file ${file.file}:`, error);
+    }
+  }
+
   // Enhanced prompt with more context and detailed analysis request
   const prompt = `You are a senior technical documentation expert. Analyze the following Git branch changes and create comprehensive documentation that explains not just WHAT changed, but WHY and HOW it impacts the project.
 
@@ -322,6 +499,8 @@ const generateBranchDocumentation = async (
 - **Current Branch**: ${branchChanges.currentBranch}
 - **Base Branch**: ${branchChanges.baseBranch}
 - **Total Files Modified**: ${branchChanges.totalChanges}
+- **New Files Added**: ${newFiles.length}
+- **Existing Files Modified**: ${modifiedFiles.length}
 - **Lines Added**: ${branchChanges.totalInsertions}
 - **Lines Removed**: ${branchChanges.totalDeletions}
 - **Include Uncommitted**: ${branchChanges.includeUncommitted ? "Yes" : "No"}
@@ -336,21 +515,57 @@ ${branchChanges.commits
   )
   .join("\n")}
 
-## Files Modified
-${branchChanges.changedFiles
+## New Files Added (${newFiles.length})
+${
+  newFiles.length > 0
+    ? newFiles
+        .map(
+          (file: any) =>
+            `- **${file.file}** (+${file.insertions || 0} lines)${
+              file.binary ? " [BINARY]" : ""
+            }`
+        )
+        .join("\n")
+    : "None"
+}
+
+## Existing Files Modified (${modifiedFiles.length})
+${
+  modifiedFiles.length > 0
+    ? modifiedFiles
+        .map(
+          (file: any) =>
+            `- **${file.file}** (+${file.insertions || 0} -${
+              file.deletions || 0
+            })${file.binary ? " [BINARY]" : ""}`
+        )
+        .join("\n")
+    : "None"
+}
+
+${
+  Object.keys(newFileContents).length > 0
+    ? `
+## New File Contents
+${Object.entries(newFileContents)
   .map(
-    (file: any) =>
-      `- **${file.file}** (+${file.insertions || 0} -${file.deletions || 0})${
-        file.binary ? " [BINARY]" : ""
-      }`
+    ([filePath, content]) => `
+### ${filePath}
+\`\`\`${getFileExtension(filePath)}
+${content}
+\`\`\`
+`
   )
-  .join("\n")}
+  .join("")}
+`
+    : ""
+}
 
 ## Code Changes (Diff Analysis)
 \`\`\`diff
-${branchChanges.diffContent.substring(0, 4000)}
+${branchChanges.diffContent.substring(0, 3000)}
 ${
-  branchChanges.diffContent.length > 4000 ? "\n... (truncated for brevity)" : ""
+  branchChanges.diffContent.length > 3000 ? "\n... (truncated for brevity)" : ""
 }
 \`\`\`
 
@@ -700,36 +915,60 @@ const generateCodeComments = async (
   try {
     const originalContent = readFileSync(filePath, "utf8");
     const fileExtension = filePath.split(".").pop()?.toLowerCase();
+    const changedLines = getChangedLinesFromDiff(diffContent);
 
-    const prompt = `Please analyze this code file and its changes, then add helpful comments to explain the logic, especially for the changed parts:
+    // Filter to only added lines (where we want to add comments)
+    const addedLines = changedLines.filter((line) => line.type === "added");
+
+    if (addedLines.length === 0) {
+      return {
+        content: originalContent,
+        commentsAdded: 0,
+        preview: `No new lines to comment in ${filePath}`,
+      };
+    }
+
+    const prompt = `Please analyze this code file and add helpful comments ONLY to the newly added or changed lines. Do not modify existing code or comments.
 
 File: ${filePath}
 Language: ${fileExtension}
 
-Changes (diff):
-${diffContent}
+## Changed Lines to Comment (line numbers are approximate):
+${addedLines
+  .map((line) => `Line ~${line.lineNumber}: ${line.content}`)
+  .join("\n")}
 
-Original Code:
-${originalContent}
+## Context - Full Diff:
+${
+  diffContent.length > 2000
+    ? diffContent.substring(0, 2000) + "\n... (truncated)"
+    : diffContent
+}
 
-Please add comments that:
-1. Explain complex logic or algorithms
-2. Clarify the purpose of functions and classes
-3. Document parameters and return values
-4. Explain business logic or domain-specific concepts
-5. Add TODO or NOTE comments where appropriate
+## Original File Content:
+${
+  originalContent.length > 3000
+    ? originalContent.substring(0, 3000) + "\n... (truncated)"
+    : originalContent
+}
 
-Return the complete file with added comments. Use appropriate comment syntax for ${fileExtension} files.
-Only add comments where they would be genuinely helpful - don't over-comment obvious code.
+INSTRUCTIONS:
+1. Add comments ONLY to the newly added lines shown above
+2. Focus on explaining WHY the code does what it does, not WHAT it does
+3. Explain complex logic, business rules, or non-obvious implementations
+4. Use appropriate comment syntax for ${fileExtension} files
+5. DO NOT over-comment simple operations
+6. DO NOT modify existing code or comments
+7. Return the complete file with strategically placed comments on the changed lines
 
 Format your response as JSON:
 {
-  "commentedCode": "the complete file with added comments",
-  "commentsAdded": 5,
-  "summary": "brief summary of what comments were added"
+  "commentedCode": "the complete file with comments added only to new/changed lines",
+  "commentsAdded": number_of_comments_added,
+  "summary": "brief summary of what comments were added and where"
 }`;
 
-    const systemInstruction = `You are a senior developer adding helpful comments to code. Add clear, concise comments that improve code readability and maintainability. Use the appropriate comment syntax for the programming language.`;
+    const systemInstruction = `You are a senior developer with 10+ years experience adding strategic comments to code. Your role is to add meaningful comments that help other developers understand complex logic, business rules, and implementation decisions. Focus on the WHY, not the WHAT. Only comment on newly added or changed lines - do not modify existing code or comments.`;
 
     try {
       // Use OpenAI client to generate comments
@@ -748,7 +987,11 @@ Format your response as JSON:
         return {
           content: parsed.commentedCode || originalContent,
           commentsAdded: parsed.commentsAdded || 0,
-          preview: parsed.summary || `Added comments to ${filePath}`,
+          preview:
+            parsed.summary ||
+            `Added ${
+              parsed.commentsAdded || 0
+            } strategic comments to changed lines in ${filePath}`,
         };
       }
     } catch (error) {
@@ -759,7 +1002,7 @@ Format your response as JSON:
     return {
       content: originalContent,
       commentsAdded: 0,
-      preview: `Would add intelligent comments to ${filePath} explaining the logic in the diff changes`,
+      preview: `Would add strategic comments to ${addedLines.length} newly added lines in ${filePath}`,
     };
   } catch (error) {
     throw new Error(`Failed to generate comments for ${filePath}: ${error}`);
@@ -862,7 +1105,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.0");
+  .version("2.0.1");
 
 // Setup command
 program
@@ -1383,7 +1626,7 @@ program
                   filePath,
                   options.base
                 );
-                if (fileChanges.hasChanges) {
+                if (fileChanges && fileChanges.hasChanges) {
                   diffContent = fileChanges.diff;
                   console.log(
                     chalk.gray(`📋 Found committed changes in: ${filePath}`)
