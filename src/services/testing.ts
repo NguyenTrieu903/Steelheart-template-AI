@@ -1,4 +1,4 @@
-import { GeminiClient } from "./gemini-client";
+import { OpenAIClient } from "./openai-client";
 import {
   TestConfig,
   UnitTest,
@@ -10,10 +10,10 @@ import { writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 
 export class TestingService {
-  private geminiClient: GeminiClient;
+  private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.geminiClient = new GeminiClient(configPath);
+    this.openaiClient = new OpenAIClient(configPath);
   }
 
   async generateTests(
@@ -93,7 +93,7 @@ export class TestingService {
           "testFramework": "jest|mocha|vitest|other"
         }`;
 
-    return await this.geminiClient.generateContent(prompt, systemInstruction);
+    return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
 
   private buildTestPrompt(

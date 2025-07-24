@@ -47,9 +47,9 @@ const saveConfig = (config: any) => {
 
 // Utility functions
 const validateApiKey = (): boolean => {
-  const apiKey = process.env.GEMINI_API_KEY || getConfig().apiKey;
+  const apiKey = process.env.OPENAI_API_KEY || getConfig().apiKey;
   if (!apiKey) {
-    console.log(chalk.red("❌ Gemini API key not found!"));
+    console.log(chalk.red("❌ OpenAI API key not found!"));
     console.log(chalk.yellow("💡 Please run: st setup"));
     return false;
   }
@@ -396,7 +396,7 @@ Please format as comprehensive markdown documentation with clear sections and ac
   const systemInstruction = `You are a senior technical documentation expert and code reviewer with deep expertise in software architecture, best practices, and team collaboration. Your role is to create documentation that not only describes changes but provides meaningful insights that help team members understand the technical decisions, implications, and next steps. Focus on clarity, completeness, and actionable information.`;
 
   try {
-    const content = await service["geminiClient"].generateContent(
+    const content = await service["openaiClient"].generateContent(
       prompt,
       systemInstruction
     );
@@ -689,7 +689,7 @@ ${
 }
 
 ---
-*This documentation was generated automatically. For AI-powered detailed analysis, ensure a valid Gemini API key is configured.*`;
+*This documentation was generated automatically. For AI-powered detailed analysis, ensure a valid OpenAI API key is configured.*`;
   }
 };
 
@@ -732,11 +732,11 @@ Format your response as JSON:
     const systemInstruction = `You are a senior developer adding helpful comments to code. Add clear, concise comments that improve code readability and maintainability. Use the appropriate comment syntax for the programming language.`;
 
     try {
-      // Use Gemini client to generate comments
-      const geminiClient = new (
-        await import("./services/gemini-client")
-      ).GeminiClient();
-      const response = await geminiClient.generateContent(
+      // Use OpenAI client to generate comments
+      const openaiClient = new (
+        await import("./services/openai-client")
+      ).OpenAIClient();
+      const response = await openaiClient.generateContent(
         prompt,
         systemInstruction
       );
@@ -880,8 +880,8 @@ program
         {
           type: "input",
           name: "apiKey",
-          message: "Enter your Gemini API key:",
-          default: config.apiKey || process.env.GEMINI_API_KEY,
+          message: "Enter your OpenAI API key:",
+          default: config.apiKey || process.env.OPENAI_API_KEY,
           validate: (input) => (input.trim() ? true : "API key is required"),
         },
         {
@@ -893,9 +893,9 @@ program
         {
           type: "list",
           name: "defaultModel",
-          message: "Default Gemini model:",
-          choices: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"],
-          default: config.defaultModel || "gemini-1.5-pro",
+          message: "Default OpenAI model:",
+          choices: ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+          default: config.defaultModel || "gpt-4o-mini",
         },
       ]);
 

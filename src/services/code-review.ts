@@ -1,14 +1,14 @@
-import { GeminiClient } from "./gemini-client";
+import { OpenAIClient } from "./openai-client";
 import { ReviewReport, Issue, Suggestion, RepositoryAnalysis } from "../types";
 import { analyzeRepository } from "../utils/repository-analyzer";
 import { writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 
 export class CodeReviewService {
-  private geminiClient: GeminiClient;
+  private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.geminiClient = new GeminiClient(configPath);
+    this.openaiClient = new OpenAIClient(configPath);
   }
 
   async performCodeReview(
@@ -85,7 +85,7 @@ export class CodeReviewService {
           "infoIssues": 0
         }`;
 
-    return await this.geminiClient.generateContent(prompt, systemInstruction);
+    return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
 
   private buildReviewPrompt(

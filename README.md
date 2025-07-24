@@ -1,6 +1,6 @@
 # Steelheart AI
 
-A comprehensive AI-powered development toolkit using Google's Gemini AI. This package provides automated **code review**, **documentation generation**, and **test creation** capabilities that can be used as a CLI tool or integrated as a library in any project.
+A comprehensive AI-powered development toolkit using OpenAI's GPT models. This package provides automated **code review**, **documentation generation**, and **test creation** capabilities that can be used as a CLI tool or integrated as a library in any project.
 
 ## 🚀 Quick Start
 
@@ -10,7 +10,7 @@ A comprehensive AI-powered development toolkit using Google's Gemini AI. This pa
 # Install globally via npm
 npm install -g steelheart-ai
 
-# Setup your Gemini API key
+# Setup your OpenAI API key
 steelheart setup
 
 # Auto-review your current project
@@ -27,6 +27,15 @@ npm install steelheart-ai
 # Or install as dev dependency
 npm install --save-dev steelheart-ai
 ```
+
+## 💰 Cost-Effective AI Analysis
+
+Optimized for developers with budget constraints:
+
+- **Primary Model**: `gpt-4o-mini` (~$0.15 per 1M tokens)
+- **Fallback Model**: `gpt-3.5-turbo` (~$0.50 per 1M tokens)
+- **Your $5 Budget**: Handles 100-500 comprehensive analyses!
+- **Smart Token Management**: Automatic optimization and cost tracking
 
 ## 📋 Features
 
@@ -73,16 +82,16 @@ steelheart --help
 ### Library Usage (Programmatic)
 
 ```typescript
-import { 
-  CodeReviewService, 
-  DocumentationService, 
-  TestingService, 
-  analyzeRepository 
-} from 'steelheart-ai';
+import {
+  CodeReviewService,
+  DocumentationService,
+  TestingService,
+  analyzeRepository,
+} from "steelheart-ai";
 
 // Auto-analyze entire repository
-const results = await analyzeRepository('/path/to/project', {
-  outputPath: './analysis-results',
+const results = await analyzeRepository("/path/to/project", {
+  outputPath: "./analysis-results",
   includeReview: true,
   includeDocs: true,
   includeTests: true,
@@ -90,7 +99,7 @@ const results = await analyzeRepository('/path/to/project', {
 
 // Or use individual services
 const reviewService = new CodeReviewService();
-const report = await reviewService.performCodeReview('./');
+const report = await reviewService.performCodeReview("./");
 
 console.log(`Found ${report.issues.length} issues`);
 ```
@@ -112,7 +121,7 @@ steelheart auto-review
 
 # Output:
 # 🚀 Steelheart AI - AI-powered development toolkit
-# 
+#
 # 🤖 Auto-Review Mode
 # 📂 Project Type: Node.js/JavaScript
 # 🌿 Current Branch: feature/new-feature
@@ -120,7 +129,7 @@ steelheart auto-review
 #    • src/components/Button.tsx
 #    • src/utils/helpers.ts
 #    • tests/Button.test.tsx
-# 
+#
 # 🤖 Smart Review Results:
 # Branch: feature/new-feature
 # Project Type: Node.js/JavaScript
@@ -129,7 +138,7 @@ steelheart auto-review
 # Warnings: 2
 # Suggestions: 5
 # Report saved to: ./steelheart-output
-# 
+#
 # 💡 Some improvements suggested. Consider reviewing.
 ```
 
@@ -144,14 +153,14 @@ steelheart branch-docs
 
 # Output:
 # 🚀 Steelheart AI - AI-powered development toolkit
-# 
+#
 # 📋 Branch Documentation Generator
 # 🌿 Current Branch: feature/authentication
 # 🔗 Base Branch: main
 # 📝 Changed Files: 6
 # ➕ Insertions: 147
 # ➖ Deletions: 23
-# 
+#
 # 📋 Branch Documentation Summary:
 # Branch: feature/authentication
 # Commits: 4
@@ -165,13 +174,13 @@ steelheart auto-comment --dry-run
 # 💬 Auto-Comment Generator
 # 🌿 Current Branch: feature/authentication
 # 📝 Files to process: 4
-# 
+#
 # 📝 Comments for src/components/LoginForm.tsx:
 # Would add comments explaining authentication logic, form validation, and error handling
-# 
+#
 # 📝 Comments for src/hooks/useAuth.ts:
 # Would add comments explaining custom hook logic, state management, and API calls
-# 
+#
 # 🔍 This was a dry run. Use without --dry-run to apply changes.
 
 # Actually apply the comments (with backup)
@@ -182,7 +191,7 @@ steelheart auto-comment --backup
 # ✅ Comments added to: src/components/LoginForm.tsx
 # 💾 Backup saved: src/hooks/useAuth.ts.backup
 # ✅ Comments added to: src/hooks/useAuth.ts
-# 
+#
 # 💬 Auto-Comment Summary:
 # Files processed: 4/4
 # Comments added: 23
@@ -194,7 +203,7 @@ steelheart auto-comment --backup
 gemini-ai-template/
 ├── src/
 │   ├── services/           # Core AI services
-│   │   ├── gemini-client.ts    # Gemini API client
+│   │   ├── openai-client.ts    # OpenAI API client
 │   │   ├── code-review.ts      # Code review service
 │   │   ├── documentation.ts    # Documentation generation
 │   │   └── testing.ts          # Test generation
@@ -205,7 +214,7 @@ gemini-ai-template/
 │   ├── cli.ts              # Command-line interface
 │   └── index.ts            # Main exports
 ├── config/
-│   └── gemini-config.json  # Configuration template
+│   └── openai-config.json  # Configuration template
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -256,17 +265,17 @@ Creates test suites:
 Create a `.env` file in your project root:
 
 ```env
-GEMINI_API_KEY=your_api_key_here
-GEMINI_MODEL=gemini-2.0-flash-exp
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ### Advanced Configuration
 
-Customize behavior in `config/gemini-config.json`:
+Customize behavior in `config/openai-config.json`:
 
 ```json
 {
-  "model": "gemini-2.0-flash-exp",
+  "model": "gpt-4o-mini",
   "temperature": 0.7,
   "features": {
     "codeReview": {
@@ -329,7 +338,7 @@ jobs:
 
       - name: Run AI Analysis
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           npx gemini-ai-template all ./
 
@@ -384,7 +393,7 @@ The template automatically detects and works with:
 
 - Node.js 18+
 - TypeScript 5+
-- Gemini API key
+- OpenAI API key
 - Git repository (for analysis)
 
 ## Contributing
@@ -408,7 +417,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 **API Key Not Found**
 
 ```bash
-Error: GEMINI_API_KEY environment variable is required
+Error: OPENAI_API_KEY environment variable is required
 ```
 
 Solution: Run `npm run setup -- -k YOUR_API_KEY`
@@ -427,7 +436,7 @@ Solution: Ensure the path exists and contains a valid project
 Error: Rate limit exceeded
 ```
 
-Solution: Wait a few minutes or upgrade to a paid Gemini API plan
+Solution: Wait a few minutes or add credits to your OpenAI account
 
 ### Getting Help
 
@@ -437,4 +446,4 @@ Solution: Wait a few minutes or upgrade to a paid Gemini API plan
 
 ---
 
-**Built with ❤️ using Google Gemini AI**
+**Built with ❤️ using OpenAI GPT**

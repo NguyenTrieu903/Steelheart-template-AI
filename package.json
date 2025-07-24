@@ -1,7 +1,7 @@
 {
   "name": "steelheart-ai",
   "version": "1.3.3",
-  "description": "AI-powered code review, documentation generation, and testing toolkit using Gemini AI",
+  "description": "AI-powered code review, documentation generation, and testing toolkit using OpenAI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -28,12 +28,12 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "fs-extra": "^11.2.0",
     "inquirer": "^8.2.6",
+    "openai": "^4.104.0",
     "ora": "^5.4.1",
     "simple-git": "^3.25.0"
   },
@@ -48,7 +48,8 @@
   },
   "keywords": [
     "ai",
-    "gemini",
+    "openai",
+    "gpt",
     "code-review",
     "documentation",
     "testing",

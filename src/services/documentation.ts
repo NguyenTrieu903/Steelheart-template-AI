@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
-import { GeminiClient } from "./gemini-client";
+import { OpenAIClient } from "./openai-client";
 import {
   Documentation,
   DocumentationSection,
@@ -9,10 +9,10 @@ import {
 import { analyzeRepository } from "../utils/repository-analyzer";
 
 export class DocumentationService {
-  private geminiClient: GeminiClient;
+  private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.geminiClient = new GeminiClient(configPath);
+    this.openaiClient = new OpenAIClient(configPath);
   }
 
   async generateDocumentation(
@@ -78,7 +78,7 @@ export class DocumentationService {
           "content": "Full documentation content in markdown format"
         }`;
 
-    return await this.geminiClient.generateContent(prompt, systemInstruction);
+    return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
 
   private buildDocumentationPrompt(

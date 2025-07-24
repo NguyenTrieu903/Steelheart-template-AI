@@ -1,7 +1,7 @@
 import { CodeReviewService } from "./services/code-review";
 import { DocumentationService } from "./services/documentation";
 import { TestingService } from "./services/testing";
-import { GeminiClient } from "./services/gemini-client";
+import { OpenAIClient } from "./services/openai-client";
 import * as dotenv from "dotenv";
 
 // Load environment variables
@@ -11,7 +11,7 @@ export {
   CodeReviewService,
   DocumentationService,
   TestingService,
-  GeminiClient,
+  OpenAIClient,
 };
 
 export * from "./types";
@@ -76,9 +76,9 @@ export async function analyzeRepository(
 async function main() {
   const repositoryPath = process.argv[2] || process.cwd();
 
-  if (!process.env.GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY environment variable is required");
-    console.log("Get your API key from: https://aistudio.google.com/apikey");
+  if (!process.env.OPENAI_API_KEY) {
+    console.error("OPENAI_API_KEY environment variable is required");
+    console.log("Get your API key from: https://platform.openai.com/api-keys");
     process.exit(1);
   }
 
