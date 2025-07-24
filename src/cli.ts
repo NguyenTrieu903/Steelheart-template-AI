@@ -1166,7 +1166,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.3");
+  .version("2.0.4");
 
 // Setup command
 program
@@ -1633,14 +1633,17 @@ program
 
       // Get files to process
       let filesToProcess = files;
+      let branchChanges: any = null; // Declare branchChanges in broader scope
+      
+      // Always get branch changes for context, even if files are specified manually
+      branchChanges = await getBranchChanges(
+        repoPath,
+        options.base,
+        options.includeLocal
+      );
+      
       if (filesToProcess.length === 0) {
         // Use enhanced branch analysis to detect changes (similar to branch-docs)
-        const branchChanges = await getBranchChanges(
-          repoPath,
-          options.base,
-          options.includeLocal
-        );
-
         if (!branchChanges) {
           spinner.warn("Could not analyze branch changes");
           console.log(
@@ -1685,16 +1688,16 @@ program
 
         // Filter changed files to only include code files
         filesToProcess = branchChanges.changedFiles
-          .filter((file) =>
+          .filter((file: any) =>
             file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
           )
-          .map((file) => file.file);
+          .map((file: any) => file.file);
 
         if (filesToProcess.length === 0) {
           spinner.warn("No code files found to comment");
           console.log(chalk.yellow("❌ No code files found in changes"));
           console.log(chalk.yellow("💡 Changes found in:"));
-          branchChanges.changedFiles.slice(0, 5).forEach((file) => {
+          branchChanges.changedFiles.slice(0, 5).forEach((file: any) => {
             console.log(chalk.gray(`   • ${file.file}`));
           });
           console.log(
@@ -1732,7 +1735,7 @@ program
         console.log(chalk.gray("   Files to comment:"));
         filesToProcess.slice(0, 5).forEach((file) => {
           const fileInfo = branchChanges.changedFiles.find(
-            (f) => f.file === file
+            (f: any) => f.file === file
           );
           const isNew = fileInfo?.isNew ? " [NEW]" : "";
           console.log(chalk.gray(`     • ${file}${isNew}`));
@@ -1785,45 +1788,75 @@ program
             continue;
           }
 
-          // For uncommitted files, get working directory diff
+          // Get diff content using the same logic as branch-docs
           let diffContent = "";
           try {
-            // Try to get diff from working directory (for uncommitted changes)
-            const git = simpleGit(repoPath);
-            const workingDiff = await git.diff([filePath]);
-            if (workingDiff) {
-              diffContent = workingDiff;
-              console.log(
-                chalk.gray(`📋 Found working directory changes in: ${filePath}`)
-              );
-            } else {
-              // Try staged changes
-              const stagedDiff = await git.diff(["--staged", filePath]);
-              if (stagedDiff) {
-                diffContent = stagedDiff;
-                console.log(
-                  chalk.gray(`📋 Found staged changes in: ${filePath}`)
-                );
+            // Get the file info from branch changes (same as branch-docs) if available
+            const fileInfo = branchChanges?.changedFiles?.find((f: any) => f.file === filePath);
+            
+            if (fileInfo && branchChanges) {
+              // For new files, get the full content as diff
+              if (fileInfo.isNew) {
+                const fullContent = readFileSync(fullPath, "utf8");
+                diffContent = `+++ ${filePath}\n${fullContent.split('\n').map(line => `+${line}`).join('\n')}`;
+                console.log(chalk.gray(`📋 New file detected: ${filePath}`));
               } else {
-                // Try committed changes against base branch
-                const fileChanges = await getFileChanges(
-                  repoPath,
-                  filePath,
-                  options.base
-                );
-                if (fileChanges && fileChanges.hasChanges) {
-                  diffContent = fileChanges.diff;
-                  console.log(
-                    chalk.gray(`📋 Found committed changes in: ${filePath}`)
-                  );
+                // For modified files, get the actual diff from branch changes
+                const git = simpleGit(repoPath);
+                
+                if (options.includeLocal && branchChanges.includeUncommitted) {
+                  // Include working directory and staged changes
+                  const workingDiff = await git.diff([filePath]);
+                  const stagedDiff = await git.diff(["--staged", filePath]);
+                  
+                  if (workingDiff || stagedDiff) {
+                    diffContent = workingDiff || stagedDiff;
+                    console.log(chalk.gray(`📋 Found local changes in: ${filePath}`));
+                  } else {
+                    // Fall back to committed changes
+                    diffContent = await git.diff([`${branchChanges.baseBranch}...${branchChanges.currentBranch}`, "--", filePath]);
+                    console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                  }
                 } else {
-                  console.log(
-                    chalk.yellow(`⚠️  No changes detected in: ${filePath}`)
-                  );
-                  // Still process the file but with empty diff
-                  diffContent = `File: ${filePath}\nNo changes detected - adding general code comments`;
+                  // Only committed changes (same as branch-docs)
+                  diffContent = await git.diff([`${branchChanges.baseBranch}...${branchChanges.currentBranch}`, "--", filePath]);
+                  console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
                 }
               }
+            } else {
+              // Fallback when branchChanges is not available or file not found in changes
+              const git = simpleGit(repoPath);
+              
+              // Try to get diff from working directory (for uncommitted changes)
+              const workingDiff = await git.diff([filePath]);
+              if (workingDiff) {
+                diffContent = workingDiff;
+                console.log(chalk.gray(`📋 Found working directory changes in: ${filePath}`));
+              } else {
+                // Try staged changes
+                const stagedDiff = await git.diff(["--staged", filePath]);
+                if (stagedDiff) {
+                  diffContent = stagedDiff;
+                  console.log(chalk.gray(`📋 Found staged changes in: ${filePath}`));
+                } else {
+                  // Try committed changes against base branch
+                  const fileChanges = await getFileChanges(
+                    repoPath,
+                    filePath,
+                    options.base
+                  );
+                  if (fileChanges && fileChanges.hasChanges) {
+                    diffContent = fileChanges.diff;
+                    console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                  }
+                }
+              }
+            }
+            
+            // If no diff found, create a minimal diff for commenting
+            if (!diffContent || diffContent.trim() === "") {
+              console.log(chalk.yellow(`⚠️  No changes detected in: ${filePath}`));
+              diffContent = `File: ${filePath}\nNo changes detected - adding strategic code comments`;
             }
           } catch (diffError) {
             console.log(

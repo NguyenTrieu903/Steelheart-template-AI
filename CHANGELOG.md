@@ -1,6 +1,35 @@
 # Changelog
 
-## [2.0.3] - 2025-07-24
+## [2.0.5] - 2025-07-24
+
+### 🚀 Major Improvements
+
+- **Enhanced Auto-Comment Logic**: Updated auto-comment to use the same branch detection logic as branch-docs
+- **Consistent File Detection**: All commands now use unified `getBranchChanges` approach for detecting files
+- **Better New File Handling**: Auto-comment now properly handles new files like branch-docs does
+- **Improved Branch Context**: Auto-comment now has full branch context for better diff detection
+
+### 🔧 Technical Changes
+
+- **Unified Branch Analysis**: Auto-comment now uses `getBranchChanges` for consistent file detection
+- **Enhanced Diff Logic**: Better handling of new files vs modified files in auto-comment
+- **Improved Error Handling**: Better fallback when branch changes cannot be detected
+- **TypeScript Fixes**: Fixed all implicit any type errors
+
+## [2.0.4] - 2025-07-24
+
+### 🐛 Bug Fixes
+
+- **Import Error Fix**: Fixed `existsSync is not a function` error in CodeReviewService
+- **Enhanced File Detection**: Improved file path resolution for auto-review and auto-comment commands
+- **Consistent Git Detection**: Updated all commands to use unified branch change detection logic
+
+### 🔧 Improvements
+
+- **Better Error Handling**: More descriptive error messages for file detection issues
+- **Import Cleanup**: Fixed incorrect module imports in service files
+
+## [2.0.4] - 2025-07-24
 
 ### 🚀 Major Changes
 

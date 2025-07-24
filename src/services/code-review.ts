@@ -1,7 +1,7 @@
 import { OpenAIClient } from "./openai-client";
 import { ReviewReport, Issue, Suggestion, RepositoryAnalysis } from "../types";
 import { analyzeRepository } from "../utils/repository-analyzer";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 
 export class CodeReviewService {
@@ -135,8 +135,6 @@ export class CodeReviewService {
     );
 
     // Get full content of new files for comprehensive review
-    const { readFileSync } = require("fs");
-    const { join, existsSync } = require("path");
     const newFileContents: any = {};
 
     for (const file of newFiles) {
