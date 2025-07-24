@@ -1166,7 +1166,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.1");
+  .version("2.0.3");
 
 // Setup command
 program
@@ -1290,7 +1290,9 @@ program
   .alias("ar")
   .description("🤖 Smart auto-review current branch changes")
   .option("-o, --output <dir>", "Output directory")
+  .option("-b, --base <branch>", "Base branch to compare against", "main")
   .option("--staged", "Review only staged changes")
+  .option("--include-local", "Include uncommitted local changes")
   .option("--commits <number>", "Number of recent commits to review", "1")
   .action(async (options) => {
     showBanner();
@@ -1319,31 +1321,90 @@ program
       console.log(chalk.blue(`📂 Project Type: ${projectType}`));
       console.log(chalk.blue(`🌿 Current Branch: ${gitInfo.currentBranch}`));
 
-      if (gitInfo.hasChanges) {
+      // Use enhanced branch analysis to detect changes (including local files)
+      const branchChanges = await getBranchChanges(
+        repoPath,
+        options.base,
+        options.includeLocal || options.staged || true // Default to include local changes for auto-review
+      );
+
+      if (!branchChanges) {
+        spinner.warn("Could not analyze branch changes");
         console.log(
-          chalk.yellow(`📝 Modified Files (${gitInfo.modifiedFiles.length}):`)
+          chalk.yellow(
+            `❌ Could not analyze Git changes. This might happen if:`
+          )
         );
-        gitInfo.modifiedFiles.slice(0, 5).forEach((file) => {
-          console.log(chalk.gray(`   • ${file}`));
-        });
-        if (gitInfo.modifiedFiles.length > 5) {
-          console.log(
-            chalk.gray(`   ... and ${gitInfo.modifiedFiles.length - 5} more`)
-          );
-        }
-      } else {
-        console.log(chalk.green(`✅ No uncommitted changes`));
+        console.log(
+          chalk.yellow(`   • Base branch '${options.base}' doesn't exist`)
+        );
+        console.log(chalk.yellow(`   • No commits found to compare`));
+        console.log(chalk.yellow(`   • Repository has no commit history`));
+        console.log(chalk.yellow(`\n💡 Try:`));
+        console.log(chalk.yellow(`   • steelheart auto-review --base master`));
+        console.log(
+          chalk.yellow(`   • steelheart auto-review --base origin/main`)
+        );
+        console.log(
+          chalk.yellow(`   • steelheart auto-review --include-local`)
+        );
+        return;
       }
 
-      spinner.text = "Performing smart AI code review...";
+      if (branchChanges.changedFiles.length === 0) {
+        spinner.warn("No changes found to review");
+        console.log(
+          chalk.yellow(
+            `No changes found between ${options.base} and ${gitInfo.currentBranch}`
+          )
+        );
+        console.log(
+          chalk.yellow(`💡 Try --include-local to include uncommitted changes`)
+        );
+        return;
+      }
+
+      console.log(
+        chalk.blue(`📝 Files to review: ${branchChanges.changedFiles.length}`)
+      );
+      console.log(chalk.blue(`📄 New files: ${branchChanges.newFiles.length}`));
+      console.log(
+        chalk.blue(`✏️  Modified files: ${branchChanges.modifiedFiles.length}`)
+      );
+      console.log(
+        chalk.blue(`➕ Insertions: ${branchChanges.totalInsertions}`)
+      );
+      console.log(chalk.blue(`➖ Deletions: ${branchChanges.totalDeletions}`));
+
+      if (options.includeLocal && branchChanges.includeUncommitted) {
+        console.log(chalk.yellow("📋 Including uncommitted local changes"));
+      }
+
+      spinner.text = "Performing enhanced AI code review...";
       const service = new CodeReviewService();
-      const report = await service.performCodeReview(repoPath, outputDir);
+
+      // Use the enhanced branch review method
+      const report = await service.performBranchReview(
+        repoPath,
+        branchChanges,
+        outputDir
+      );
 
       spinner.succeed("Smart review completed!");
 
-      console.log(chalk.blue("\n🤖 Smart Review Results:"));
+      console.log(chalk.blue("\n🤖 Enhanced Review Results:"));
       console.log(`${chalk.gray("Branch:")} ${gitInfo.currentBranch}`);
+      console.log(`${chalk.gray("Base:")} ${branchChanges.baseBranch}`);
       console.log(`${chalk.gray("Project Type:")} ${projectType}`);
+      console.log(
+        `${chalk.gray("Files Reviewed:")} ${branchChanges.changedFiles.length}`
+      );
+      console.log(
+        `${chalk.gray("New Files:")} ${branchChanges.newFiles.length}`
+      );
+      console.log(
+        `${chalk.gray("Modified Files:")} ${branchChanges.modifiedFiles.length}`
+      );
       console.log(`${chalk.gray("Total Issues:")} ${report.issues.length}`);
       console.log(`${chalk.red("Critical:")} ${report.criticalIssues}`);
       console.log(`${chalk.yellow("Warnings:")} ${report.warningIssues}`);
@@ -1547,6 +1608,7 @@ program
     "Specific files to comment (default: all changed files)"
   )
   .option("-b, --base <branch>", "Base branch to compare against", "main")
+  .option("--include-local", "Include uncommitted local changes", true)
   .option("--backup", "Create backup files before commenting")
   .option(
     "--dry-run",
@@ -1572,98 +1634,113 @@ program
       // Get files to process
       let filesToProcess = files;
       if (filesToProcess.length === 0) {
-        // First priority: Check working directory changes (uncommitted files)
-        const git = simpleGit(repoPath);
-
-        // Get staged added files
-        const stagedAddedFiles = await git
-          .raw(["diff", "--cached", "--name-status"])
-          .then((output) => {
-            return output
-              .trim()
-              .split("\n")
-              .filter((line) => line.trim() && line.startsWith("A"))
-              .map((line) => line.split("\t")[1])
-              .filter(
-                (f) =>
-                  f &&
-                  f.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
-              );
-          })
-          .catch(() => []);
-
-        // Get untracked (unadded) files
-        const untrackedFiles = await git
-          .raw(["ls-files", "--others", "--exclude-standard"])
-          .then((output) =>
-            output
-              .trim()
-              .split("\n")
-              .filter(
-                (f) =>
-                  f &&
-                  f.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
-              )
-          )
-          .catch(() => []);
-
-        // Get working directory modified files (traditional git status)
-        const gitStatus = await git.status();
-        const workingModifiedFiles = gitStatus.modified.filter((file) =>
-          file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+        // Use enhanced branch analysis to detect changes (similar to branch-docs)
+        const branchChanges = await getBranchChanges(
+          repoPath,
+          options.base,
+          options.includeLocal
         );
 
-        // Combine all local files: staged added + untracked + modified
-        const workingDirFiles = [
-          ...new Set([
-            ...stagedAddedFiles,
-            ...untrackedFiles,
-            ...workingModifiedFiles,
-          ]),
-        ];
+        if (!branchChanges) {
+          spinner.warn("Could not analyze branch changes");
+          console.log(
+            chalk.yellow(
+              `❌ Could not analyze Git changes. This might happen if:`
+            )
+          );
+          console.log(
+            chalk.yellow(`   • Base branch '${options.base}' doesn't exist`)
+          );
+          console.log(chalk.yellow(`   • No commits found to compare`));
+          console.log(chalk.yellow(`   • Repository has no commit history`));
+          console.log(chalk.yellow(`\n💡 Try:`));
+          console.log(
+            chalk.yellow(`   • steelheart auto-comment --base master`)
+          );
+          console.log(
+            chalk.yellow(`   • steelheart auto-comment --base origin/main`)
+          );
+          console.log(
+            chalk.yellow(
+              `   • steelheart auto-comment file1.js file2.ts (specify files)`
+            )
+          );
+          return;
+        }
 
-        if (workingDirFiles.length > 0) {
-          filesToProcess = workingDirFiles;
+        if (branchChanges.changedFiles.length === 0) {
+          spinner.warn("No changes found to comment");
           console.log(
-            chalk.blue(
-              `\n📝 Found ${workingDirFiles.length} uncommitted code files`
+            chalk.yellow(
+              `No changes found between ${options.base} and ${gitInfo.currentBranch}`
             )
           );
           console.log(
-            chalk.gray(`   Staged added: ${stagedAddedFiles.length}`)
-          );
-          console.log(chalk.gray(`   Untracked: ${untrackedFiles.length}`));
-          console.log(
-            chalk.gray(`   Modified: ${workingModifiedFiles.length}`)
-          );
-          console.log(
-            chalk.gray(
-              "   Files: " +
-                workingDirFiles.slice(0, 3).join(", ") +
-                (workingDirFiles.length > 3 ? "..." : "")
+            chalk.yellow(
+              `💡 Try --include-local to include uncommitted changes`
             )
           );
-        } else {
-          // Second priority: Use committed changes from git
-          const branchChanges = await getBranchChanges(
-            repoPath,
-            options.base,
-            false
+          return;
+        }
+
+        // Filter changed files to only include code files
+        filesToProcess = branchChanges.changedFiles
+          .filter((file) =>
+            file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+          )
+          .map((file) => file.file);
+
+        if (filesToProcess.length === 0) {
+          spinner.warn("No code files found to comment");
+          console.log(chalk.yellow("❌ No code files found in changes"));
+          console.log(chalk.yellow("💡 Changes found in:"));
+          branchChanges.changedFiles.slice(0, 5).forEach((file) => {
+            console.log(chalk.gray(`   • ${file.file}`));
+          });
+          console.log(
+            chalk.yellow("   But none are code files that can be commented.")
           );
-          if (branchChanges && branchChanges.changedFiles.length > 0) {
-            filesToProcess = branchChanges.changedFiles
-              .filter((file) =>
-                file.file.match(
-                  /\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/
-                )
-              )
-              .map((file) => file.file);
-            console.log(
-              chalk.blue(
-                `\n📝 Found ${filesToProcess.length} committed code files`
-              )
-            );
-          }
+          return;
+        }
+
+        console.log(chalk.blue(`\n💬 Auto-Comment Analysis`));
+        console.log(
+          chalk.blue(`🌿 Current Branch: ${branchChanges.currentBranch}`)
+        );
+        console.log(chalk.blue(`🔗 Base Branch: ${branchChanges.baseBranch}`));
+        console.log(
+          chalk.blue(
+            `📝 Total Files Changed: ${branchChanges.changedFiles.length}`
+          )
+        );
+        console.log(
+          chalk.blue(`📄 Code Files to Process: ${filesToProcess.length}`)
+        );
+        console.log(
+          chalk.blue(`📄 New Files: ${branchChanges.newFiles.length}`)
+        );
+        console.log(
+          chalk.blue(
+            `✏️  Modified Files: ${branchChanges.modifiedFiles.length}`
+          )
+        );
+
+        if (options.includeLocal && branchChanges.includeUncommitted) {
+          console.log(chalk.yellow("📋 Including uncommitted local changes"));
+        }
+
+        console.log(chalk.gray("   Files to comment:"));
+        filesToProcess.slice(0, 5).forEach((file) => {
+          const fileInfo = branchChanges.changedFiles.find(
+            (f) => f.file === file
+          );
+          const isNew = fileInfo?.isNew ? " [NEW]" : "";
+          console.log(chalk.gray(`     • ${file}${isNew}`));
+        });
+        if (filesToProcess.length > 5) {
+          console.log(
+            chalk.gray(`     ... and ${filesToProcess.length - 5} more`)
+          );
         }
       }
 
