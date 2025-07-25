@@ -1170,7 +1170,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.4");
+  .version("2.0.6");
 
 // Setup command
 program
