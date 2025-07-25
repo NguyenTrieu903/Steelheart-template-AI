@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
+import chalk from "chalk";
 import { Command } from "commander";
+import * as dotenv from "dotenv";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { ensureDirSync } from "fs-extra";
+import inquirer from "inquirer";
+import ora from "ora";
+import { join } from "path";
+import simpleGit from "simple-git";
 import { CodeReviewService } from "./services/code-review";
 import { DocumentationService } from "./services/documentation";
 import { TestingService } from "./services/testing";
 import { analyzeRepository } from "./utils/repository-analyzer";
-import chalk from "chalk";
-import ora from "ora";
-import inquirer from "inquirer";
-import { join, resolve } from "path";
-import { existsSync, writeFileSync, readFileSync } from "fs";
-import { ensureDirSync } from "fs-extra";
-import * as dotenv from "dotenv";
-import simpleGit from "simple-git";
 
 // Types for auto-commenting results
 interface CommentResult {
@@ -1170,7 +1170,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.6");
+  .version("2.0.7");
 
 // Setup command
 program

@@ -88,9 +88,9 @@ export class OpenAIClient {
     try {
       return await this.generateWithModel(
         prompt,
-        systemInstruction,
         this.config.model!,
-        maxRetries
+        maxRetries,
+        systemInstruction
       );
     } catch (primaryError) {
       console.warn(
@@ -108,9 +108,9 @@ export class OpenAIClient {
           );
           return await this.generateWithModel(
             prompt,
-            systemInstruction,
             this.config.fallbackModel,
-            maxRetries
+            maxRetries,
+            systemInstruction
           );
         } catch (fallbackError) {
           console.error(`Both primary and fallback models failed.`);
@@ -126,9 +126,9 @@ export class OpenAIClient {
 
   private async generateWithModel(
     prompt: string,
-    systemInstruction: string | undefined,
     modelName: string,
-    maxRetries: number
+    maxRetries: number,
+    systemInstruction?: string
   ): Promise<string> {
     let lastError: any;
 
@@ -136,14 +136,6 @@ export class OpenAIClient {
       try {
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
           [];
-
-        // Add system message if provided
-        if (systemInstruction) {
-          messages.push({
-            role: "system",
-            content: systemInstruction,
-          });
-        }
 
         // Add user message
         messages.push({
@@ -240,7 +232,7 @@ export class OpenAIClient {
     const prompt = this.buildAnalysisPrompt(repoPath, analysisType);
     const systemInstruction = this.getSystemInstruction(analysisType);
 
-    return await this.generateContent(prompt, systemInstruction);
+    return await this.generateContent(prompt);
   }
 
   private buildAnalysisPrompt(repoPath: string, analysisType: string): string {

@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.6] - 2025-07-24
+## [2.0.7] - 2025-07-24
 
 ### 🚀 Major Improvements
 
@@ -16,7 +16,7 @@
 - **Improved Error Handling**: Better fallback when branch changes cannot be detected
 - **TypeScript Fixes**: Fixed all implicit any type errors
 
-## [2.0.6] - 2025-07-24
+## [2.0.7] - 2025-07-24
 
 ### 🐛 Bug Fixes
 
@@ -29,7 +29,7 @@
 - **Better Error Handling**: More descriptive error messages for file detection issues
 - **Import Cleanup**: Fixed incorrect module imports in service files
 
-## [2.0.6] - 2025-07-24
+## [2.0.7] - 2025-07-24
 
 ### 🚀 Major Changes
 
