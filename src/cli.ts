@@ -1170,7 +1170,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.7");
+  .version("2.0.8");
 
 // Setup command
 program
@@ -2075,7 +2075,11 @@ program
 
       spinner.text = "Generating tests...";
       const service = new TestingService();
-      const tests = await service.generateTests(projectPath, outputDir);
+      const tests = await service.generateTests(
+        projectPath,
+        outputDir,
+        options.base || "main"
+      );
 
       spinner.succeed("Tests generated!");
 
@@ -2146,7 +2150,8 @@ program
         const testService = new TestingService();
         results.tests = await testService.generateTests(
           projectPath,
-          join(outputDir, "tests")
+          join(outputDir, "tests"),
+          "main"
         );
       }
 

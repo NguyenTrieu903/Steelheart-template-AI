@@ -1,6 +1,30 @@
 # Changelog
 
-## [2.0.7] - 2025-07-24
+## [2.0.8] - 2025-07-25
+
+### ✨ New Features
+
+- **Enhanced Test Generation**: Complete rewrite of testing service to analyze actual Git branch changes
+- **Smart File Detection**: Tests are now generated only for files that have been modified or added in the current branch
+- **Output Path Support**: Tests can be written to a specified output directory or placed next to source files
+- **Intelligent Test Placement**: Automatically detects **tests** directories or creates tests alongside source files
+- **Branch-based Analysis**: Uses same Git logic as branch-docs and auto-review for consistent file detection
+
+### 🔧 Improvements
+
+- **Better Error Handling**: Improved error messages and graceful failure handling
+- **File Type Detection**: Supports JavaScript, TypeScript, JSX, and TSX files
+- **Test Merging**: Appends new tests to existing test files when appropriate
+- **Comprehensive Prompts**: AI prompts now include actual file content and Git diffs for accurate test generation
+
+### 📝 Technical Changes
+
+- Updated `TestingService.generateTests()` to accept `baseBranch` parameter
+- Added `getBranchChanges()` method for Git analysis
+- Enhanced test file path resolution and directory creation
+- Improved TypeScript type safety throughout the testing service
+
+## [2.0.8] - 2025-07-24
 
 ### 🚀 Major Improvements
 
@@ -16,7 +40,7 @@
 - **Improved Error Handling**: Better fallback when branch changes cannot be detected
 - **TypeScript Fixes**: Fixed all implicit any type errors
 
-## [2.0.7] - 2025-07-24
+## [2.0.8] - 2025-07-24
 
 ### 🐛 Bug Fixes
 
@@ -29,7 +53,7 @@
 - **Better Error Handling**: More descriptive error messages for file detection issues
 - **Import Cleanup**: Fixed incorrect module imports in service files
 
-## [2.0.7] - 2025-07-24
+## [2.0.8] - 2025-07-24
 
 ### 🚀 Major Changes
 
