@@ -83,41 +83,41 @@ export class CodeReviewService {
   ): Promise<string> {
     const prompt = this.buildReviewPrompt(repoPath, analysis);
     const systemInstruction = `You are an expert code reviewer with years of experience in software development.
-        Analyze the provided repository for:
-        1. Bugs and potential issues
-        2. Security vulnerabilities  
-        3. Performance bottlenecks
-        4. Code style and best practices
-        5. Maintainability concerns
-        6. Architecture improvements
-        
-        Provide your response in the following JSON format:
-        {
-          "issues": [
-            {
-              "file": "path/to/file.js",
-              "line": 10,
-              "column": 5,
-              "severity": "critical|warning|info",
-              "category": "bug|security|performance|style|maintainability", 
-              "description": "Description of the issue",
-              "suggestion": "How to fix it",
-              "rule": "Rule name if applicable"
-            }
-          ],
-          "suggestions": [
-            {
-              "type": "improvement|refactoring|optimization",
-              "description": "Suggestion description",
-              "file": "optional file path",
-              "impact": "high|medium|low"
-            }
-          ],
-          "overallAssessment": "Overall code quality assessment",
-          "criticalIssues": 0,
-          "warningIssues": 0,
-          "infoIssues": 0
-        }`;
+                                  Analyze the provided repository for:
+                                  1. Bugs and potential issues
+                                  2. Security vulnerabilities  
+                                  3. Performance bottlenecks
+                                  4. Code style and best practices
+                                  5. Maintainability concerns
+                                  6. Architecture improvements
+                                  
+                                  Provide your response in the following JSON format:
+                                  {
+                                    "issues": [
+                                      {
+                                        "file": "path/to/file.js",
+                                        "line": 10,
+                                        "column": 5,
+                                        "severity": "critical|warning|info",
+                                        "category": "bug|security|performance|style|maintainability", 
+                                        "description": "Description of the issue",
+                                        "suggestion": "How to fix it",
+                                        "rule": "Rule name if applicable"
+                                      }
+                                    ],
+                                    "suggestions": [
+                                      {
+                                        "type": "improvement|refactoring|optimization",
+                                        "description": "Suggestion description",
+                                        "file": "optional file path",
+                                        "impact": "high|medium|low"
+                                      }
+                                    ],
+                                    "overallAssessment": "Overall code quality assessment",
+                                    "criticalIssues": 0,
+                                    "warningIssues": 0,
+                                    "infoIssues": 0
+                                  }`;
 
     return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
@@ -157,55 +157,55 @@ export class CodeReviewService {
     );
     const systemInstruction = `You are a senior code reviewer with 10+ years of experience. Perform a comprehensive code review focusing on:
 
-    FOR NEW FILES (complete review):
-    1. Architecture and design patterns
-    2. Code quality and best practices
-    3. Security vulnerabilities
-    4. Performance considerations
-    5. Error handling and edge cases
-    6. Documentation and comments
-    7. Testing considerations
-    8. Integration with existing codebase
+                                  FOR NEW FILES (complete review):
+                                  1. Architecture and design patterns
+                                  2. Code quality and best practices
+                                  3. Security vulnerabilities
+                                  4. Performance considerations
+                                  5. Error handling and edge cases
+                                  6. Documentation and comments
+                                  7. Testing considerations
+                                  8. Integration with existing codebase
 
-    FOR MODIFIED FILES (focused review):
-    1. Impact of changes on existing functionality
-    2. Potential breaking changes
-    3. Security implications of modifications
-    4. Performance impact
-    5. Code style consistency
-    6. Regression risks
+                                  FOR MODIFIED FILES (focused review):
+                                  1. Impact of changes on existing functionality
+                                  2. Potential breaking changes
+                                  3. Security implications of modifications
+                                  4. Performance impact
+                                  5. Code style consistency
+                                  6. Regression risks
 
-    Provide your response in the following JSON format:
-    {
-      "issues": [
-        {
-          "file": "path/to/file.js",
-          "line": 10,
-          "column": 5,
-          "severity": "critical|warning|info",
-          "category": "bug|security|performance|style|maintainability|architecture", 
-          "description": "Description of the issue",
-          "suggestion": "How to fix it",
-          "rule": "Rule name if applicable",
-          "isNewFile": true|false
-        }
-      ],
-      "suggestions": [
-        {
-          "type": "improvement|refactoring|optimization|architecture",
-          "description": "Suggestion description",
-          "file": "optional file path",
-          "impact": "high|medium|low",
-          "isForNewFile": true|false
-        }
-      ],
-      "overallAssessment": "Overall assessment including new file integration",
-      "newFilesAnalyzed": ${newFiles.length},
-      "modifiedFilesAnalyzed": ${modifiedFiles.length},
-      "criticalIssues": 0,
-      "warningIssues": 0,
-      "infoIssues": 0
-    }`;
+                                  Provide your response in the following JSON format:
+                                  {
+                                    "issues": [
+                                      {
+                                        "file": "path/to/file.js",
+                                        "line": 10,
+                                        "column": 5,
+                                        "severity": "critical|warning|info",
+                                        "category": "bug|security|performance|style|maintainability|architecture", 
+                                        "description": "Description of the issue",
+                                        "suggestion": "How to fix it",
+                                        "rule": "Rule name if applicable",
+                                        "isNewFile": true|false
+                                      }
+                                    ],
+                                    "suggestions": [
+                                      {
+                                        "type": "improvement|refactoring|optimization|architecture",
+                                        "description": "Suggestion description",
+                                        "file": "optional file path",
+                                        "impact": "high|medium|low",
+                                        "isForNewFile": true|false
+                                      }
+                                    ],
+                                    "overallAssessment": "Overall assessment including new file integration",
+                                    "newFilesAnalyzed": ${newFiles.length},
+                                    "modifiedFilesAnalyzed": ${modifiedFiles.length},
+                                    "criticalIssues": 0,
+                                    "warningIssues": 0,
+                                    "infoIssues": 0
+                                  }`;
 
     return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
@@ -216,29 +216,31 @@ export class CodeReviewService {
   ): string {
     return `Please perform a comprehensive code review of this repository:
 
-Repository Path: ${repoPath}
+                Repository Path: ${repoPath}
 
-Repository Analysis:
-- Total Files: ${analysis.structure.totalFiles}
-- Technologies: ${analysis.technologies
-      .map((t) => `${t.name} ${t.version || ""}`)
-      .join(", ")}
-- Main File Types: ${Object.entries(analysis.structure.fileTypes)
-      .map(([ext, count]) => `${ext}: ${count}`)
-      .join(", ")}
-- Lines of Code: ${analysis.metrics.linesOfCode}
-- Complexity Score: ${analysis.metrics.complexity}
+                Repository Analysis:
+                - Total Files: ${analysis.structure.totalFiles}
+                - Technologies: ${analysis.technologies
+                  .map((t) => `${t.name} ${t.version || ""}`)
+                  .join(", ")}
+                - Main File Types: ${Object.entries(
+                  analysis.structure.fileTypes
+                )
+                  .map(([ext, count]) => `${ext}: ${count}`)
+                  .join(", ")}
+                - Lines of Code: ${analysis.metrics.linesOfCode}
+                - Complexity Score: ${analysis.metrics.complexity}
 
-Key Dependencies:
-${analysis.dependencies
-  .map((dep) => `- ${dep.name}@${dep.version} (${dep.type})`)
-  .join("\n")}
+                Key Dependencies:
+                ${analysis.dependencies
+                  .map((dep) => `- ${dep.name}@${dep.version} (${dep.type})`)
+                  .join("\n")}
 
-Main Files to Focus On:
-${analysis.structure.mainFiles.join("\n")}
+                Main Files to Focus On:
+                ${analysis.structure.mainFiles.join("\n")}
 
-Please provide a thorough code review focusing on code quality, security, performance, and maintainability. 
-Prioritize critical issues that could cause bugs or security vulnerabilities.`;
+                Please provide a thorough code review focusing on code quality, security, performance, and maintainability. 
+                Prioritize critical issues that could cause bugs or security vulnerabilities.`;
   }
 
   private buildBranchReviewPrompt(

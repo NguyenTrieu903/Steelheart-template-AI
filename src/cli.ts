@@ -991,43 +991,47 @@ const generateCodeComments = async (
 
     const prompt = `Please analyze this code file and add helpful comments ONLY to the newly added or changed lines. Do not modify existing code or comments.
 
-File: ${filePath}
-Language: ${fileExtension}
+                      File: ${filePath}
+                      Language: ${fileExtension}
 
-## Changed Lines to Comment (line numbers are approximate):
-${addedLines
-  .map((line) => `Line ~${line.lineNumber}: ${line.content}`)
-  .join("\n")}
+                      ## Changed Lines to Comment (line numbers are approximate):
+                      ${addedLines
+                        .map(
+                          (line) => `Line ~${line.lineNumber}: ${line.content}`
+                        )
+                        .join("\n")}
 
-## Context - Full Diff:
-${
-  diffContent.length > 2000
-    ? diffContent.substring(0, 2000) + "\n... (truncated)"
-    : diffContent
-}
+                      ## Context - Full Diff:
+                      ${
+                        diffContent.length > 1000000
+                          ? diffContent.substring(0, 1000000) +
+                            "\n... (truncated)"
+                          : diffContent
+                      }
 
-## Original File Content:
-${
-  originalContent.length > 3000
-    ? originalContent.substring(0, 3000) + "\n... (truncated)"
-    : originalContent
-}
+                      ## Original File Content:
+                      ${
+                        originalContent.length > 1000000
+                          ? originalContent.substring(0, 1000000) +
+                            "\n... (truncated)"
+                          : originalContent
+                      }
 
-INSTRUCTIONS:
-1. Add comments ONLY to the newly added lines shown above
-2. Focus on explaining WHY the code does what it does, not WHAT it does
-3. Explain complex logic, business rules, or non-obvious implementations
-4. Use appropriate comment syntax for ${fileExtension} files
-5. DO NOT over-comment simple operations
-6. DO NOT modify existing code or comments
-7. Return the complete file with strategically placed comments on the changed lines
+                      INSTRUCTIONS:
+                      1. Add comments ONLY to the newly added lines shown above
+                      2. Focus on explaining WHY the code does what it does, not WHAT it does
+                      3. Explain complex logic, business rules, or non-obvious implementations
+                      4. Use appropriate comment syntax for ${fileExtension} files
+                      5. DO NOT over-comment simple operations
+                      6. DO NOT modify existing code or comments
+                      7. Return the complete file with strategically placed comments on the changed lines
 
-Format your response as JSON:
-{
-  "commentedCode": "the complete file with comments added only to new/changed lines",
-  "commentsAdded": number_of_comments_added,
-  "summary": "brief summary of what comments were added and where"
-}`;
+                      Format your response as JSON:
+                      {
+                        "commentedCode": "the complete file with comments added only to new/changed lines",
+                        "commentsAdded": number_of_comments_added,
+                        "summary": "brief summary of what comments were added and where"
+                      }`;
 
     const systemInstruction = `You are a senior developer with 10+ years experience adding strategic comments to code. Your role is to add meaningful comments that help other developers understand complex logic, business rules, and implementation decisions. Focus on the WHY, not the WHAT. Only comment on newly added or changed lines - do not modify existing code or comments.`;
 
@@ -1634,14 +1638,14 @@ program
       // Get files to process
       let filesToProcess = files;
       let branchChanges: any = null; // Declare branchChanges in broader scope
-      
+
       // Always get branch changes for context, even if files are specified manually
       branchChanges = await getBranchChanges(
         repoPath,
         options.base,
         options.includeLocal
       );
-      
+
       if (filesToProcess.length === 0) {
         // Use enhanced branch analysis to detect changes (similar to branch-docs)
         if (!branchChanges) {
@@ -1792,52 +1796,77 @@ program
           let diffContent = "";
           try {
             // Get the file info from branch changes (same as branch-docs) if available
-            const fileInfo = branchChanges?.changedFiles?.find((f: any) => f.file === filePath);
-            
+            const fileInfo = branchChanges?.changedFiles?.find(
+              (f: any) => f.file === filePath
+            );
+
             if (fileInfo && branchChanges) {
               // For new files, get the full content as diff
               if (fileInfo.isNew) {
                 const fullContent = readFileSync(fullPath, "utf8");
-                diffContent = `+++ ${filePath}\n${fullContent.split('\n').map(line => `+${line}`).join('\n')}`;
+                diffContent = `+++ ${filePath}\n${fullContent
+                  .split("\n")
+                  .map((line) => `+${line}`)
+                  .join("\n")}`;
                 console.log(chalk.gray(`📋 New file detected: ${filePath}`));
               } else {
                 // For modified files, get the actual diff from branch changes
                 const git = simpleGit(repoPath);
-                
+
                 if (options.includeLocal && branchChanges.includeUncommitted) {
                   // Include working directory and staged changes
                   const workingDiff = await git.diff([filePath]);
                   const stagedDiff = await git.diff(["--staged", filePath]);
-                  
+
                   if (workingDiff || stagedDiff) {
                     diffContent = workingDiff || stagedDiff;
-                    console.log(chalk.gray(`📋 Found local changes in: ${filePath}`));
+                    console.log(
+                      chalk.gray(`📋 Found local changes in: ${filePath}`)
+                    );
                   } else {
                     // Fall back to committed changes
-                    diffContent = await git.diff([`${branchChanges.baseBranch}...${branchChanges.currentBranch}`, "--", filePath]);
-                    console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                    diffContent = await git.diff([
+                      `${branchChanges.baseBranch}...${branchChanges.currentBranch}`,
+                      "--",
+                      filePath,
+                    ]);
+                    console.log(
+                      chalk.gray(`📋 Found committed changes in: ${filePath}`)
+                    );
                   }
                 } else {
                   // Only committed changes (same as branch-docs)
-                  diffContent = await git.diff([`${branchChanges.baseBranch}...${branchChanges.currentBranch}`, "--", filePath]);
-                  console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                  diffContent = await git.diff([
+                    `${branchChanges.baseBranch}...${branchChanges.currentBranch}`,
+                    "--",
+                    filePath,
+                  ]);
+                  console.log(
+                    chalk.gray(`📋 Found committed changes in: ${filePath}`)
+                  );
                 }
               }
             } else {
               // Fallback when branchChanges is not available or file not found in changes
               const git = simpleGit(repoPath);
-              
+
               // Try to get diff from working directory (for uncommitted changes)
               const workingDiff = await git.diff([filePath]);
               if (workingDiff) {
                 diffContent = workingDiff;
-                console.log(chalk.gray(`📋 Found working directory changes in: ${filePath}`));
+                console.log(
+                  chalk.gray(
+                    `📋 Found working directory changes in: ${filePath}`
+                  )
+                );
               } else {
                 // Try staged changes
                 const stagedDiff = await git.diff(["--staged", filePath]);
                 if (stagedDiff) {
                   diffContent = stagedDiff;
-                  console.log(chalk.gray(`📋 Found staged changes in: ${filePath}`));
+                  console.log(
+                    chalk.gray(`📋 Found staged changes in: ${filePath}`)
+                  );
                 } else {
                   // Try committed changes against base branch
                   const fileChanges = await getFileChanges(
@@ -1847,15 +1876,19 @@ program
                   );
                   if (fileChanges && fileChanges.hasChanges) {
                     diffContent = fileChanges.diff;
-                    console.log(chalk.gray(`📋 Found committed changes in: ${filePath}`));
+                    console.log(
+                      chalk.gray(`📋 Found committed changes in: ${filePath}`)
+                    );
                   }
                 }
               }
             }
-            
+
             // If no diff found, create a minimal diff for commenting
             if (!diffContent || diffContent.trim() === "") {
-              console.log(chalk.yellow(`⚠️  No changes detected in: ${filePath}`));
+              console.log(
+                chalk.yellow(`⚠️  No changes detected in: ${filePath}`)
+              );
               diffContent = `File: ${filePath}\nNo changes detected - adding strategic code comments`;
             }
           } catch (diffError) {

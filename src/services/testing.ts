@@ -55,43 +55,43 @@ export class TestingService {
     const prompt = this.buildTestPrompt(repoPath, analysis);
     const systemInstruction = `You are a testing expert. Generate comprehensive unit tests and integration tests.
         
-        Generate tests that include:
-        1. Unit tests for individual functions and classes
-        2. Integration tests for system components
-        3. Test cases covering edge cases and error scenarios
-        4. Proper setup and teardown procedures
-        5. Mock dependencies where appropriate
-        
-        Provide your response in the following JSON format:
-        {
-          "unitTests": [
-            {
-              "description": "Test description",
-              "filePath": "path/to/test/file.test.js",
-              "targetFunction": "functionName",
-              "code": "test code",
-              "testCases": [
-                {
-                  "name": "test case name",
-                  "input": "input data",
-                  "expectedOutput": "expected result",
-                  "description": "what this test verifies"
-                }
-              ]
-            }
-          ],
-          "integrationTests": [
-            {
-              "description": "Integration test description",
-              "filePath": "path/to/integration/test.test.js",
-              "setup": "setup code",
-              "execution": "test execution code",
-              "teardown": "cleanup code",
-              "dependencies": ["dependency1", "dependency2"]
-            }
-          ],
-          "testFramework": "jest|mocha|vitest|other"
-        }`;
+                                  Generate tests that include:
+                                  1. Unit tests for individual functions and classes
+                                  2. Integration tests for system components
+                                  3. Test cases covering edge cases and error scenarios
+                                  4. Proper setup and teardown procedures
+                                  5. Mock dependencies where appropriate
+                                  
+                                  Provide your response in the following JSON format:
+                                  {
+                                    "unitTests": [
+                                      {
+                                        "description": "Test description",
+                                        "filePath": "path/to/test/file.test.js",
+                                        "targetFunction": "functionName",
+                                        "code": "test code",
+                                        "testCases": [
+                                          {
+                                            "name": "test case name",
+                                            "input": "input data",
+                                            "expectedOutput": "expected result",
+                                            "description": "what this test verifies"
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "integrationTests": [
+                                      {
+                                        "description": "Integration test description",
+                                        "filePath": "path/to/integration/test.test.js",
+                                        "setup": "setup code",
+                                        "execution": "test execution code",
+                                        "teardown": "cleanup code",
+                                        "dependencies": ["dependency1", "dependency2"]
+                                      }
+                                    ],
+                                    "testFramework": "jest|mocha|vitest|other"
+                                  }`;
 
     return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
@@ -104,34 +104,34 @@ export class TestingService {
 
     return `Please generate comprehensive test suites for this repository:
 
-Repository Path: ${repoPath}
+                Repository Path: ${repoPath}
 
-Repository Analysis:
-- Primary Technology: ${mainTechnology}
-- Total Files: ${analysis.structure.totalFiles}
-- Technologies: ${analysis.technologies
-      .map((t) => `${t.name} ${t.version || ""}`)
-      .join(", ")}
-- Lines of Code: ${analysis.metrics.linesOfCode}
-- Complexity Score: ${analysis.metrics.complexity}
+                Repository Analysis:
+                - Primary Technology: ${mainTechnology}
+                - Total Files: ${analysis.structure.totalFiles}
+                - Technologies: ${analysis.technologies
+                  .map((t) => `${t.name} ${t.version || ""}`)
+                  .join(", ")}
+                - Lines of Code: ${analysis.metrics.linesOfCode}
+                - Complexity Score: ${analysis.metrics.complexity}
 
-Key Dependencies:
-${analysis.dependencies
-  .map((dep) => `- ${dep.name}@${dep.version} (${dep.type})`)
-  .join("\n")}
+                Key Dependencies:
+                ${analysis.dependencies
+                  .map((dep) => `- ${dep.name}@${dep.version} (${dep.type})`)
+                  .join("\n")}
 
-Main Files to Test:
-${analysis.structure.mainFiles.join("\n")}
+                Main Files to Test:
+                ${analysis.structure.mainFiles.join("\n")}
 
-Testing Requirements:
-1. Generate unit tests for core functions and classes
-2. Create integration tests for main workflows
-3. Include edge cases and error handling tests
-4. Use appropriate testing framework for ${mainTechnology}
-5. Provide meaningful test descriptions and assertions
-6. Include setup/teardown where needed
+                Testing Requirements:
+                1. Generate unit tests for core functions and classes
+                2. Create integration tests for main workflows
+                3. Include edge cases and error handling tests
+                4. Use appropriate testing framework for ${mainTechnology}
+                5. Provide meaningful test descriptions and assertions
+                6. Include setup/teardown where needed
 
-Focus on testing critical business logic and potential failure points.`;
+                Focus on testing critical business logic and potential failure points.`;
   }
 
   private parseTestContent(content: string, repoUrl: string): TestConfig {
