@@ -60,7 +60,7 @@ export class CodeReviewService {
     );
 
     const newFileContents: any = {};
-
+    const modifiedFileContents: any = {};
     for (const file of newFiles) {
       try {
         const fullPath = join(repoPath, file.file);
@@ -73,11 +73,24 @@ export class CodeReviewService {
       }
     }
 
+    for (const file of modifiedFiles) {
+      try {
+        const fullPath = join(repoPath, file.file);
+        if (existsSync(fullPath)) {
+          const content = readFileSync(fullPath, "utf8");
+          modifiedFileContents[file.file] = content;
+        }
+      } catch (error) {
+        console.warn(`Could not read modified file ${file.file}:`, error);
+      }
+    }
+
     const prompt = this.buildBranchReviewPrompt(
       repoPath,
       analysis,
       branchChanges,
-      newFileContents
+      newFileContents,
+      modifiedFileContents
     );
     const systemInstruction = `You are a senior code reviewer with 10+ years of experience. Perform a comprehensive code review focusing on:
 
@@ -91,13 +104,22 @@ export class CodeReviewService {
                                   7. Testing considerations
                                   8. Integration with existing codebase
 
-                                  FOR MODIFIED FILES (focused review):
-                                  1. Impact of changes on existing functionality
-                                  2. Potential breaking changes
-                                  3. Security implications of modifications
-                                  4. Performance impact
-                                  5. Code style consistency
-                                  6. Regression risks
+                                  FOR MODIFIED FILES (focused review on changes):
+                                  1. Review the actual changes made (analyze the diff)
+                                  2. Impact of changes on existing functionality
+                                  3. Potential breaking changes or regressions
+                                  4. Security implications of modifications
+                                  5. Performance impact of the changes
+                                  6. Code style consistency with existing code
+                                  7. Error handling for new/modified logic
+                                  8. Test coverage for modified functionality
+
+                                  IMPORTANT: 
+                                  - For NEW files: Review the entire file comprehensively
+                                  - For MODIFIED files: Focus on the changes but consider the full context
+                                  - Provide specific feedback on both what was added/changed and how it fits with existing code
+                                  - Flag any potential issues with the modifications
+                                  - Suggest improvements for both new and modified code
                                   `;
 
     return await this.openaiClient.generateContent(prompt, systemInstruction);
@@ -107,7 +129,8 @@ export class CodeReviewService {
     repoPath: string,
     analysis: RepositoryAnalysis,
     branchChanges: any,
-    newFileContents: any
+    newFileContents: any,
+    modifiedFileContents: any
   ): string {
     const newFiles = branchChanges.changedFiles.filter(
       (file: any) => file.isNew
@@ -116,7 +139,7 @@ export class CodeReviewService {
       (file: any) => !file.isNew
     );
 
-    return `Please perform a comprehensive code review of this branch with enhanced focus on new files:
+    return `Please perform a comprehensive code review of this branch with focus on BOTH new files and modified files:
 
 Repository Path: ${repoPath}
 Branch: ${branchChanges.currentBranch} (compared to ${branchChanges.baseBranch})
@@ -144,8 +167,8 @@ ${
             `### ${file.file} (+${file.insertions || 0} lines)
 ${
   newFileContents[file.file]
-    ? `\`\`\`\n${newFileContents[file.file].substring(0, 2000)}\n${
-        newFileContents[file.file].length > 2000 ? "... (truncated)\n" : ""
+    ? `\`\`\`\n${newFileContents[file.file].substring(0, 200000)}\n${
+        newFileContents[file.file].length > 200000 ? "... (truncated)\n" : ""
       }\`\`\``
     : "Content not available"
 }
@@ -161,7 +184,25 @@ ${
     ? modifiedFiles
         .map(
           (file: any) =>
-            `- ${file.file} (+${file.insertions || 0} -${file.deletions || 0})`
+            `### ${file.file} (+${file.insertions || 0} -${file.deletions || 0})
+${
+  modifiedFileContents[file.file]
+    ? `**Current File Content:**
+\`\`\`
+${modifiedFileContents[file.file].substring(0, 100000)}${
+        modifiedFileContents[file.file].length > 100000
+          ? "\n... (truncated for length)"
+          : ""
+      }
+\`\`\`
+
+**Changes in this file:**
+\`\`\`diff
+${file.diff || "No diff available"}
+\`\`\``
+    : "Content not available"
+}
+`
         )
         .join("\n")
     : "None"
@@ -187,15 +228,19 @@ ${
 7. Documentation and maintainability
 8. Testing strategy recommendations
 
-**For MODIFIED FILES - Focus on changes:**
-1. Impact assessment on existing functionality
-2. Breaking change identification
-3. Security implications of modifications
-4. Performance impact analysis
-5. Regression risk evaluation
-6. Code style consistency
+**For MODIFIED FILES - Analyze changes thoroughly:**
+1. Review each change in the diff carefully
+2. Impact assessment on existing functionality
+3. Breaking change identification and regression risks
+4. Security implications of modifications
+5. Performance impact analysis of the changes
+6. Code style consistency with existing patterns
+7. Logic correctness and error handling improvements
+8. Test coverage needs for modified functionality
 
-Please provide detailed analysis with specific line numbers where applicable.`;
+**IMPORTANT:** Provide equal attention to both new and modified files. For modified files, focus on understanding what changed and why, then assess the impact and quality of those specific changes.
+
+Please provide detailed analysis with specific line numbers and actionable feedback for both new files and modifications.`;
   }
 
   private saveRawReviewContent(
@@ -366,16 +411,7 @@ SENIOR DEVELOPER INSTRUCTIONS:
    - Don't over-comment obvious code
    - Explain complex algorithms step-by-step
    - Document API contracts and assumptions
-   - Highlight potential issues or improvements
-
-Return the complete file with strategic comments added ONLY to new/changed code.
-
-Format as JSON:
-{
-  "commentedCode": "complete file with strategic comments",
-  "commentsAdded": number_of_comments_added,
-  "summary": "brief summary of commenting strategy used"
-}`;
+   - Highlight potential issues or improvements`;
 
     const systemInstruction = `You are a senior software engineer with 15+ years of experience in code review, documentation, and mentoring. Your role is to add meaningful, strategic comments that help junior developers understand complex code, improve code quality, and identify areas needing testing or documentation. Focus on code clarity, maintainability, and best practices.`;
 
@@ -384,17 +420,12 @@ Format as JSON:
         prompt,
         systemInstruction
       );
-
-      // Try to parse JSON response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          content: parsed.commentedCode || fileContent,
-          commentsAdded: parsed.commentsAdded || 0,
-          preview: parsed.summary || `Added strategic comments to ${fileName}`,
-        };
-      }
+      console.log(`Generated comments for ${fileName}:`, response);
+      return {
+        content: response || fileContent,
+        commentsAdded: 0,
+        preview: `Added strategic comments to ${fileName}`,
+      };
     } catch (error) {
       console.warn(`Failed to generate AI comments for ${fileName}:`, error);
     }

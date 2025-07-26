@@ -6,7 +6,6 @@ import {
   setupCommand,
   autoReviewCommand,
   branchDocsCommand,
-  autoCommentCommand,
   genDocumentCommand,
   genTestsCommand,
   analyzeCommand,
@@ -22,13 +21,12 @@ const program = new Command();
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.1.3");
+  .version("2.1.4");
 
 // Register all commands
 program.addCommand(setupCommand);
 program.addCommand(autoReviewCommand);
 program.addCommand(branchDocsCommand);
-program.addCommand(autoCommentCommand);
 program.addCommand(genDocumentCommand);
 program.addCommand(genTestsCommand);
 program.addCommand(analyzeCommand);
