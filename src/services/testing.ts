@@ -1,4 +1,6 @@
 import { RepositoryAnalysis } from "../types";
+import { getBranchChanges } from "../utils";
+import { extractCodeFromResponse, getFileType } from "../utils/code-extraction";
 import { analyzeRepository } from "../utils/repository-analyzer";
 import { OpenAIClient } from "./openai-client";
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
@@ -22,20 +24,17 @@ export class TestingService {
       console.log(`Analyzing changes in repository: ${repoPath}`);
       console.log(`Base branch: ${baseBranch}`);
 
-      // Get Git information and branch changes
       const git = simpleGit(repoPath);
       const currentBranch = (await git.branch()).current;
       console.log(`Current branch: ${currentBranch}`);
 
-      // Get branch changes similar to other commands
-      const branchChanges = await this.getBranchChanges(repoPath, baseBranch);
+      const branchChanges = await getBranchChanges(repoPath, baseBranch);
 
       if (!branchChanges || branchChanges.changedFiles.length === 0) {
         console.log("No changes found to generate tests for");
         return { message: "No changes found", testsGenerated: 0 };
       }
 
-      // Filter for JavaScript/TypeScript files that need tests
       const codeFiles = branchChanges.changedFiles.filter(
         (file) =>
           file.file.match(/\.(js|ts|jsx|tsx)$/) &&
@@ -58,7 +57,6 @@ export class TestingService {
         console.log(`  • ${file.file} ${status}`);
       });
 
-      // Generate tests for each file
       const testResults = [];
       for (const file of codeFiles) {
         console.log(`\nGenerating tests for: ${file.file}`);
@@ -82,7 +80,6 @@ export class TestingService {
         }
       }
 
-      // Summary
       const successful = testResults.filter((r) => r.success);
       const failed = testResults.filter((r) => !r.success);
 
@@ -110,50 +107,6 @@ export class TestingService {
     }
   }
 
-  private async getBranchChanges(repoPath: string, baseBranch: string) {
-    try {
-      const git = simpleGit(repoPath);
-      const currentBranch = (await git.branch()).current;
-
-      // Get list of changed files
-      const diffSummary = await git.diffSummary([
-        `${baseBranch}...${currentBranch}`,
-      ]);
-
-      // Get detailed diff for each file
-      const changedFiles = [];
-      for (const file of diffSummary.files) {
-        const diff = await git.diff([
-          `${baseBranch}...${currentBranch}`,
-          "--",
-          file.file,
-        ]);
-        changedFiles.push({
-          file: file.file,
-          insertions: (file as any).insertions || 0,
-          deletions: (file as any).deletions || 0,
-          changes: (file as any).changes || 0,
-          isNew:
-            ((file as any).insertions > 0 && (file as any).deletions === 0) ||
-            false,
-          diff: diff,
-        });
-      }
-
-      return {
-        currentBranch,
-        baseBranch,
-        changedFiles,
-        totalFiles: changedFiles.length,
-        insertions: diffSummary.insertions,
-        deletions: diffSummary.deletions,
-      };
-    } catch (error) {
-      console.error("Error getting branch changes:", error);
-      return null;
-    }
-  }
-
   private async generateTestForFile(
     repoPath: string,
     fileInfo: any,
@@ -167,13 +120,10 @@ export class TestingService {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    // Read the current file content
     const fileContent = readFileSync(filePath, "utf8");
 
-    // Get the diff for this specific file
     const fileDiff = fileInfo.diff || "";
 
-    // Generate test content using AI
     const testContent = await this.generateTestContent(
       fileInfo.file,
       fileContent,
@@ -181,11 +131,16 @@ export class TestingService {
       fileInfo.isNew
     );
 
-    // Determine test file path
+    const fileType = getFileType(fileInfo.file);
+    const extractedCode = extractCodeFromResponse(testContent, fileType);
+
     const testFilePath = this.getTestFilePath(filePath, outputPath);
 
-    // Write the test file
-    this.writeTestFile(testFilePath, testContent, fileInfo.file);
+    this.writeTestFile(
+      testFilePath,
+      extractedCode || testContent,
+      fileInfo.file
+    );
 
     return {
       file: fileInfo.file,
@@ -203,15 +158,12 @@ export class TestingService {
     const baseName = originalFilePath.replace(ext, "");
 
     if (outputPath) {
-      // Use specified output path
       const fileName = baseName.split("/").pop() + ".test" + ext;
       return join(outputPath, fileName);
     } else {
-      // Place test file next to original file or in __tests__ directory
       const dir = dirname(originalFilePath);
       const fileName = baseName.split("/").pop() + ".test" + ext;
 
-      // Check if __tests__ directory exists
       const testsDir = join(dir, "__tests__");
       if (existsSync(testsDir)) {
         return join(testsDir, fileName);
@@ -226,16 +178,13 @@ export class TestingService {
     content: string,
     originalFile: string
   ) {
-    // Ensure directory exists
     const dir = dirname(testFilePath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Check if test file already exists
     if (existsSync(testFilePath)) {
       console.log(`Test file already exists: ${testFilePath}`);
-      // Read existing content and append new tests
       const existingContent = readFileSync(testFilePath, "utf8");
       const mergedContent = this.mergeTestContent(
         existingContent,
@@ -255,7 +204,6 @@ export class TestingService {
     newContent: string,
     originalFile: string
   ): string {
-    // Simple merge strategy: add new tests at the end with a comment
     const separator = `\n\n// Tests for changes in ${originalFile}\n`;
     return existingContent + separator + newContent;
   }
@@ -266,10 +214,7 @@ export class TestingService {
     fileDiff: string,
     isNewFile: boolean
   ): Promise<string> {
-    const fileType =
-      fileName.endsWith(".ts") || fileName.endsWith(".tsx")
-        ? "TypeScript"
-        : "JavaScript";
+    const fileType = getFileType(fileName);
     const testFramework = "Jest";
 
     const prompt = `Generate comprehensive ${testFramework} unit tests for the ${fileType} file: ${fileName}

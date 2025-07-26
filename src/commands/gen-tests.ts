@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import { ensureDirSync } from "fs-extra";
 import ora from "ora";
-import { showBanner, logInfo, logError, logGray } from "../utils/ui/console";
-import { validateApiKey, getOutputDir } from "../utils/config/config-manager";
 import { TestingService } from "../services/testing";
+import { getOutputDir, validateApiKey } from "../utils/config/config-manager";
+import { logError, showBanner } from "../utils/ui/console";
 
 export const genTestsCommand = new Command("gen-tests")
   .alias("test")
@@ -29,16 +29,9 @@ export const genTestsCommand = new Command("gen-tests")
 
       spinner.text = "Generating tests...";
       const service = new TestingService();
-      const tests = await service.generateTests(projectPath, outputDir);
+      await service.generateTests(projectPath, outputDir);
 
       spinner.succeed("Tests generated!");
-
-      logInfo("\n🧪 Test Generation Summary:");
-      logGray(`Project: ${projectPath}`);
-      logGray(`Test Type: ${options.type}`);
-      logGray(`Framework: ${options.framework}`);
-      logGray(`Tests generated: ${tests.testFiles?.length || 1}`);
-      logGray(`Output directory: ${outputDir}`);
     } catch (error) {
       spinner.fail("Test generation failed");
       logError(`Error: ${error}`);
