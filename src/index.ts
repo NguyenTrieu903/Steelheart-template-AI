@@ -3,6 +3,7 @@ import { DocumentationService } from "./services/documentation";
 import { TestingService } from "./services/testing";
 import { OpenAIClient } from "./services/openai-client";
 import * as dotenv from "dotenv";
+import { getBranchChanges } from "./utils";
 
 // Load environment variables
 dotenv.config();
@@ -42,9 +43,11 @@ export async function analyzeRepository(
   try {
     if (includeReview) {
       console.log("Running code review...");
+      const branchChanges = await getBranchChanges(repoPath, "main");
       const reviewService = new CodeReviewService(configPath);
-      results.review = await reviewService.performCodeReview(
+      results.review = await reviewService.performBranchReview(
         repoPath,
+        branchChanges,
         outputPath
       );
     }

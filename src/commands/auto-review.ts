@@ -105,12 +105,7 @@ export const autoReviewCommand = new Command("auto-review")
       const service = new CodeReviewService();
 
       // First: Perform the code review and save the report
-      const report = await service.performBranchReview(
-        repoPath,
-        branchChanges,
-        outputDir,
-        false // Disable auto-commenting in the review phase
-      );
+      await service.performBranchReview(repoPath, branchChanges, outputDir);
 
       spinner.succeed("Code review completed!");
 
@@ -121,10 +116,10 @@ export const autoReviewCommand = new Command("auto-review")
       logGray(`Files Reviewed: ${branchChanges.changedFiles.length}`);
       logGray(`New Files: ${branchChanges.newFiles.length}`);
       logGray(`Modified Files: ${branchChanges.modifiedFiles.length}`);
-      logGray(`Total Issues: ${report.issues.length}`);
-      console.log(`Critical: ${report.criticalIssues}`);
-      console.log(`Warnings: ${report.warningIssues}`);
-      logInfo(`Suggestions: ${report.suggestions.length}`);
+      // logGray(`Total Issues: ${report.issues.length}`);
+      // console.log(`Critical: ${report.criticalIssues}`);
+      // console.log(`Warnings: ${report.warningIssues}`);
+      // logInfo(`Suggestions: ${report.suggestions.length}`);
       logGray(`Report saved to: ${outputDir}`);
 
       // Step 2: Perform auto-commenting if enabled (after review is complete and saved)
@@ -181,13 +176,13 @@ export const autoReviewCommand = new Command("auto-review")
       }
 
       // Show quick tips
-      if (report.criticalIssues > 0) {
-        logError("\n⚠️  Critical issues found! Please review before pushing.");
-      } else if (report.warningIssues > 0) {
-        logWarning("\n💡 Some improvements suggested. Consider reviewing.");
-      } else {
-        logSuccess("\n✨ Great job! No critical issues found.");
-      }
+      // if (report.criticalIssues > 0) {
+      //   logError("\n⚠️  Critical issues found! Please review before pushing.");
+      // } else if (report.warningIssues > 0) {
+      //   logWarning("\n💡 Some improvements suggested. Consider reviewing.");
+      // } else {
+      //   logSuccess("\n✨ Great job! No critical issues found.");
+      // }
     } catch (error) {
       spinner.fail("Smart review failed");
       logError(`Error: ${error}`);
