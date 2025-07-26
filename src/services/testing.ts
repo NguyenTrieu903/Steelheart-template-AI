@@ -388,13 +388,6 @@ describe('Sample Test Suite', () => {
     const baseName = originalFilePath.replace(ext, "");
     const fileName = baseName.split("/").pop() + ".test" + ext;
 
-    // Priority 1: If outputPath is explicitly provided, use it
-    if (outputPath) {
-      console.log(`📁 Using provided output path: ${outputPath}`);
-      return join(outputPath, fileName);
-    }
-
-    // Priority 2: If test infrastructure was set up, use the test directory
     if (testSetup && testSetup.testDirectory) {
       console.log(
         `📁 Using test infrastructure directory: ${testSetup.testDirectory}`
