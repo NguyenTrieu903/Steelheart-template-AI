@@ -8,6 +8,15 @@ export interface ReviewReport {
   criticalIssues: number;
   warningIssues: number;
   infoIssues: number;
+  commentResults?: CommentResult[];
+}
+
+export interface CommentResult {
+  file: string;
+  commentsAdded?: number;
+  success: boolean;
+  error?: any;
+  isNew?: boolean;
 }
 
 export interface Issue {

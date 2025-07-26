@@ -1170,7 +1170,7 @@ const analyzeDiffContent = (diffContent: string, changedFiles: any[]) => {
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.0.8");
+  .version("2.0.9");
 
 // Setup command
 program
@@ -1292,11 +1292,12 @@ program
 program
   .command("auto-review")
   .alias("ar")
-  .description("🤖 Smart auto-review current branch changes")
+  .description("🤖 Smart auto-review with auto-commenting")
   .option("-o, --output <dir>", "Output directory")
   .option("-b, --base <branch>", "Base branch to compare against", "main")
   .option("--staged", "Review only staged changes")
   .option("--include-local", "Include uncommitted local changes")
+  .option("--no-comment", "Skip auto-commenting (review only)")
   .option("--commits <number>", "Number of recent commits to review", "1")
   .action(async (options) => {
     showBanner();
@@ -1384,14 +1385,22 @@ program
         console.log(chalk.yellow("📋 Including uncommitted local changes"));
       }
 
+      const enableAutoComment = !options.noComment; // Auto-comment enabled by default
+      if (enableAutoComment) {
+        console.log(
+          chalk.cyan("💬 Auto-commenting enabled (use --no-comment to disable)")
+        );
+      }
+
       spinner.text = "Performing enhanced AI code review...";
       const service = new CodeReviewService();
 
-      // Use the enhanced branch review method
+      // Use the enhanced branch review method with auto-commenting
       const report = await service.performBranchReview(
         repoPath,
         branchChanges,
-        outputDir
+        outputDir,
+        enableAutoComment
       );
 
       spinner.succeed("Smart review completed!");
@@ -1414,6 +1423,50 @@ program
       console.log(`${chalk.yellow("Warnings:")} ${report.warningIssues}`);
       console.log(`${chalk.blue("Suggestions:")} ${report.suggestions.length}`);
       console.log(`${chalk.gray("Report saved to:")} ${outputDir}`);
+
+      // Show auto-comment results if enabled
+      if (enableAutoComment && report.commentResults) {
+        const successfulComments = report.commentResults.filter(
+          (r) => r.success
+        );
+        const totalCommentsAdded = successfulComments.reduce(
+          (sum, r) => sum + (r.commentsAdded || 0),
+          0
+        );
+
+        console.log(`\n💬 Auto-Comment Results:`);
+        console.log(
+          `${chalk.gray("Files Processed:")} ${report.commentResults.length}`
+        );
+        console.log(`${chalk.gray("Comments Added:")} ${totalCommentsAdded}`);
+
+        if (totalCommentsAdded > 0) {
+          console.log(
+            chalk.green(
+              "✨ Strategic comments added to help code understanding"
+            )
+          );
+          successfulComments.forEach((result) => {
+            if (result.commentsAdded && result.commentsAdded > 0) {
+              console.log(
+                chalk.gray(
+                  `   • ${result.file}: ${result.commentsAdded} comments${
+                    result.isNew ? " [NEW]" : ""
+                  }`
+                )
+              );
+            }
+          });
+        }
+
+        const failed = report.commentResults.filter((r) => !r.success);
+        if (failed.length > 0) {
+          console.log(`${chalk.yellow("Comment Failures:")} ${failed.length}`);
+          failed.forEach((f) =>
+            console.log(chalk.yellow(`   • ${f.file}: ${f.error}`))
+          );
+        }
+      }
 
       // Show quick tips
       if (report.criticalIssues > 0) {

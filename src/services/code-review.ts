@@ -46,7 +46,8 @@ export class CodeReviewService {
   async performBranchReview(
     repoPath: string,
     branchChanges: any,
-    outputPath?: string
+    outputPath?: string,
+    autoComment: boolean = false
   ): Promise<ReviewReport> {
     try {
       console.log("Starting enhanced branch review analysis...");
@@ -63,6 +64,18 @@ export class CodeReviewService {
 
       // Parse and structure the review
       const reviewReport = this.parseReviewContent(reviewContent, repoPath);
+
+      // If auto-comment is enabled, also add comments to new/changed code
+      if (autoComment) {
+        console.log("Auto-commenting new and changed code...");
+        const commentResults = await this.autoCommentChangedCode(
+          repoPath,
+          branchChanges
+        );
+
+        // Add comment results to the review report
+        reviewReport.commentResults = commentResults;
+      }
 
       // Save report if output path is specified
       if (outputPath) {
@@ -451,6 +464,194 @@ ${suggestion.file ? `**File:** ${suggestion.file}` : ""}
   )
   .join("\n")}
 `;
+  }
+
+  // Auto-comment method for new and changed code
+  private async autoCommentChangedCode(
+    repoPath: string,
+    branchChanges: any
+  ): Promise<any[]> {
+    const results: any[] = [];
+
+    // Filter for code files that can be commented
+    const codeFiles = branchChanges.changedFiles.filter((file: any) =>
+      file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
+    );
+
+    console.log(`💬 Auto-commenting ${codeFiles.length} code files...`);
+
+    for (const fileInfo of codeFiles) {
+      const filePath = join(repoPath, fileInfo.file);
+
+      if (!existsSync(filePath)) {
+        results.push({
+          file: fileInfo.file,
+          success: false,
+          error: "File not found",
+        });
+        continue;
+      }
+
+      try {
+        console.log(
+          `   Processing: ${fileInfo.file}${fileInfo.isNew ? " [NEW]" : ""}`
+        );
+
+        // Read the file content
+        const fileContent = readFileSync(filePath, "utf8");
+
+        // Get the diff for this specific file
+        const fileDiff = fileInfo.diff || "";
+
+        // Generate AI comments with the enhanced prompt
+        const commentedCode = await this.generateSmartComments(
+          fileInfo.file,
+          fileContent,
+          fileDiff,
+          fileInfo.isNew
+        );
+
+        // Only write if there are actual changes
+        if (
+          commentedCode.content !== fileContent &&
+          commentedCode.commentsAdded > 0
+        ) {
+          writeFileSync(filePath, commentedCode.content);
+          console.log(
+            `   ✅ Added ${commentedCode.commentsAdded} comments to ${fileInfo.file}`
+          );
+
+          results.push({
+            file: fileInfo.file,
+            commentsAdded: commentedCode.commentsAdded,
+            success: true,
+            isNew: fileInfo.isNew,
+          });
+        } else {
+          console.log(`   ℹ️  No new comments needed for ${fileInfo.file}`);
+          results.push({
+            file: fileInfo.file,
+            commentsAdded: 0,
+            success: true,
+            isNew: fileInfo.isNew,
+          });
+        }
+      } catch (error) {
+        console.log(`   ❌ Error commenting ${fileInfo.file}: ${error}`);
+        results.push({
+          file: fileInfo.file,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return results;
+  }
+
+  // Enhanced comment generation with senior developer prompt
+  private async generateSmartComments(
+    fileName: string,
+    fileContent: string,
+    fileDiff: string,
+    isNewFile: boolean
+  ): Promise<{ content: string; commentsAdded: number; preview: string }> {
+    const fileType =
+      fileName.endsWith(".ts") || fileName.endsWith(".tsx")
+        ? "TypeScript"
+        : fileName.endsWith(".py")
+        ? "Python"
+        : fileName.endsWith(".java")
+        ? "Java"
+        : fileName.endsWith(".go")
+        ? "Go"
+        : "JavaScript";
+
+    const prompt = `As a senior developer, auto-comment all newly added or changed ${fileType} functions and modules in this code. Include inline suggestions where test coverage or docstrings are missing.
+
+FILE: ${fileName}
+TYPE: ${isNewFile ? "NEW FILE" : "MODIFIED FILE"}
+
+${isNewFile ? "FULL NEW FILE CONTENT:" : "CHANGES MADE (Git Diff):"}
+${
+  isNewFile
+    ? `\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
+    : `\`\`\`diff\n${fileDiff}\n\`\`\``
+}
+
+${
+  !isNewFile
+    ? `\nFULL FILE CONTEXT:\n\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
+    : ""
+}
+
+SENIOR DEVELOPER INSTRUCTIONS:
+1. **Focus on NEW/CHANGED code only** - Don't comment unchanged code
+2. **Add strategic comments for**:
+   - Complex business logic and algorithms
+   - Non-obvious implementation decisions
+   - Security considerations
+   - Performance implications
+   - Edge cases and error handling
+   - Integration points and dependencies
+
+3. **Include inline suggestions where missing**:
+   - "// TODO: Add unit tests for edge cases"
+   - "// TODO: Add JSDoc/docstring for this function"
+   - "// SUGGESTION: Consider error handling for..."
+   - "// PERFORMANCE: Consider caching this expensive operation"
+   - "// SECURITY: Validate input parameters"
+
+4. **Comment style guidelines**:
+   - Use appropriate syntax for ${fileType}
+   - Focus on WHY, not WHAT
+   - Be concise but informative
+   - Add function/class documentation where missing
+   - Suggest improvements and testing needs
+
+5. **Quality standards**:
+   - Don't over-comment obvious code
+   - Explain complex algorithms step-by-step
+   - Document API contracts and assumptions
+   - Highlight potential issues or improvements
+
+Return the complete file with strategic comments added ONLY to new/changed code.
+
+Format as JSON:
+{
+  "commentedCode": "complete file with strategic comments",
+  "commentsAdded": number_of_comments_added,
+  "summary": "brief summary of commenting strategy used"
+}`;
+
+    const systemInstruction = `You are a senior software engineer with 15+ years of experience in code review, documentation, and mentoring. Your role is to add meaningful, strategic comments that help junior developers understand complex code, improve code quality, and identify areas needing testing or documentation. Focus on code clarity, maintainability, and best practices.`;
+
+    try {
+      const response = await this.openaiClient.generateContent(
+        prompt,
+        systemInstruction
+      );
+
+      // Try to parse JSON response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          content: parsed.commentedCode || fileContent,
+          commentsAdded: parsed.commentsAdded || 0,
+          preview: parsed.summary || `Added strategic comments to ${fileName}`,
+        };
+      }
+    } catch (error) {
+      console.warn(`Failed to generate AI comments for ${fileName}:`, error);
+    }
+
+    // Fallback: return original content
+    return {
+      content: fileContent,
+      commentsAdded: 0,
+      preview: `Could not generate comments for ${fileName}`,
+    };
   }
 }
 

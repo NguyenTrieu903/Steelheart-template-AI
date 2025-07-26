@@ -1,6 +1,57 @@
 # Changelog
 
-## [2.0.8] - 2025-07-25
+## [2.0.9] - 2025-07-26
+
+### 🎯 **Major Integration: Auto-Review + Auto-Comment**
+
+- **🚀 Integrated Auto-Commenting**: `steelheart auto-review` now includes automatic code commenting by default
+- **🎓 Senior Developer Prompts**: Uses sophisticated AI prompts for strategic commenting with test coverage and documentation suggestions
+- **🔧 Granular Control**: Added `--no-comment` flag to disable auto-commenting when only review is needed
+
+### ✨ **Enhanced Features**
+
+- **Smart Code Analysis**: Auto-comments all newly added or changed JavaScript/TypeScript functions and modules
+- **Inline Suggestions**: Includes TODO items for missing test coverage, docstrings, and improvements
+- **Strategic Comments**: Focuses on complex business logic, security considerations, and performance implications
+- **Quality Guidelines**: Comments explain WHY code exists, not WHAT it does
+
+### 🎯 **New Auto-Review Capabilities**
+
+- **Unified Workflow**: Single command now performs both code review AND intelligent commenting
+- **File Type Detection**: Supports JavaScript, TypeScript, Python, Java, Go, and more
+- **Context-Aware**: Comments based on actual Git diffs and file changes
+- **Error Handling**: Graceful failure with detailed feedback
+
+### 📊 **Improved Output**
+
+- **Comment Statistics**: Shows files processed and comments added
+- **Success Tracking**: Displays which files received comments and how many
+- **Visual Indicators**: [NEW] tags for new files, success/failure status
+- **Comprehensive Summary**: Combined review and comment results in single report
+
+### 🔧 **Usage Examples**
+
+```bash
+# Auto-review with auto-commenting (default)
+steelheart auto-review
+
+# Auto-review without auto-commenting
+steelheart auto-review --no-comment
+
+# Auto-review with custom base branch
+steelheart auto-review --base develop
+
+# Include uncommitted changes
+steelheart auto-review --include-local
+```
+
+### 💡 **Senior Developer Integration**
+
+The auto-comment feature uses the exact prompt you requested:
+
+> "Auto-comment all newly added or changed JavaScript functions and modules in this PR. Include inline suggestions where test coverage or docstrings are missing."
+
+## [2.0.9] - 2025-07-25
 
 ### ✨ New Features
 
@@ -24,7 +75,7 @@
 - Enhanced test file path resolution and directory creation
 - Improved TypeScript type safety throughout the testing service
 
-## [2.0.8] - 2025-07-24
+## [2.0.9] - 2025-07-24
 
 ### 🚀 Major Improvements
 
@@ -40,7 +91,7 @@
 - **Improved Error Handling**: Better fallback when branch changes cannot be detected
 - **TypeScript Fixes**: Fixed all implicit any type errors
 
-## [2.0.8] - 2025-07-24
+## [2.0.9] - 2025-07-24
 
 ### 🐛 Bug Fixes
 
@@ -53,7 +104,7 @@
 - **Better Error Handling**: More descriptive error messages for file detection issues
 - **Import Cleanup**: Fixed incorrect module imports in service files
 
-## [2.0.8] - 2025-07-24
+## [2.0.9] - 2025-07-24
 
 ### 🚀 Major Changes
 
