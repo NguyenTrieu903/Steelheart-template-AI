@@ -467,7 +467,7 @@ ${suggestion.file ? `**File:** ${suggestion.file}` : ""}
   }
 
   // Auto-comment method for new and changed code
-  private async autoCommentChangedCode(
+  public async autoCommentChangedCode(
     repoPath: string,
     branchChanges: any
   ): Promise<any[]> {

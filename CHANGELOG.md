@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.9] - 2025-07-26
+## [2.1.0] - 2025-07-26
 
 ### 🎯 **Major Integration: Auto-Review + Auto-Comment**
 
@@ -51,7 +51,7 @@ The auto-comment feature uses the exact prompt you requested:
 
 > "Auto-comment all newly added or changed JavaScript functions and modules in this PR. Include inline suggestions where test coverage or docstrings are missing."
 
-## [2.0.9] - 2025-07-25
+## [2.1.0] - 2025-07-25
 
 ### ✨ New Features
 
@@ -75,7 +75,7 @@ The auto-comment feature uses the exact prompt you requested:
 - Enhanced test file path resolution and directory creation
 - Improved TypeScript type safety throughout the testing service
 
-## [2.0.9] - 2025-07-24
+## [2.1.0] - 2025-07-24
 
 ### 🚀 Major Improvements
 
@@ -91,7 +91,7 @@ The auto-comment feature uses the exact prompt you requested:
 - **Improved Error Handling**: Better fallback when branch changes cannot be detected
 - **TypeScript Fixes**: Fixed all implicit any type errors
 
-## [2.0.9] - 2025-07-24
+## [2.1.0] - 2025-07-24
 
 ### 🐛 Bug Fixes
 
@@ -104,7 +104,7 @@ The auto-comment feature uses the exact prompt you requested:
 - **Better Error Handling**: More descriptive error messages for file detection issues
 - **Import Cleanup**: Fixed incorrect module imports in service files
 
-## [2.0.9] - 2025-07-24
+## [2.1.0] - 2025-07-24
 
 ### 🚀 Major Changes
 
