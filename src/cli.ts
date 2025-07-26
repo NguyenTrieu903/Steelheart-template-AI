@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name("st")
   .description("🚀 Steelheart AI - AI-powered development toolkit")
-  .version("2.1.4");
+  .version("2.1.5");
 
 // Register all commands
 program.addCommand(setupCommand);
