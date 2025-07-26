@@ -92,9 +92,13 @@ export const autoReviewCommand = new Command("auto-review")
 
       const enableAutoComment = !!options.autoComment; // Auto-comment disabled by default, enabled with --auto-comment flag
       if (enableAutoComment) {
-        console.log("💬 Auto-commenting enabled - will add strategic comments after review");
+        console.log(
+          "💬 Auto-commenting enabled - will add strategic comments after review"
+        );
       } else {
-        console.log("📝 Review-only mode (use --auto-comment to enable strategic commenting)");
+        console.log(
+          "📝 Review-only mode (use --auto-comment to enable strategic commenting)"
+        );
       }
 
       spinner.text = "Performing enhanced AI code review...";
@@ -126,7 +130,7 @@ export const autoReviewCommand = new Command("auto-review")
       // Step 2: Perform auto-commenting if enabled (after review is complete and saved)
       if (enableAutoComment) {
         spinner.start("Performing auto-commenting on reviewed code...");
-        
+
         try {
           const commentResults = await service.autoCommentChangedCode(
             repoPath,
@@ -146,7 +150,9 @@ export const autoReviewCommand = new Command("auto-review")
           logGray(`Comments Added: ${totalCommentsAdded}`);
 
           if (totalCommentsAdded > 0) {
-            logSuccess("✨ Strategic comments added to help code understanding");
+            logSuccess(
+              "✨ Strategic comments added to help code understanding"
+            );
             successfulComments.forEach((result) => {
               if (result.commentsAdded && result.commentsAdded > 0) {
                 logGray(
@@ -168,7 +174,9 @@ export const autoReviewCommand = new Command("auto-review")
         } catch (commentError) {
           spinner.fail("Auto-commenting failed");
           logWarning(`Auto-commenting error: ${commentError}`);
-          logInfo("Review completed successfully, but auto-commenting encountered issues");
+          logInfo(
+            "Review completed successfully, but auto-commenting encountered issues"
+          );
         }
       }
 

@@ -104,7 +104,7 @@ export class CodeReviewService {
                                   5. Maintainability concerns
                                   6. Architecture improvements
                                   
-                                  Provide your response in the following JSON format:
+                                  IMPORTANT: Your response must be ONLY a valid JSON object. Do not include any text before or after the JSON. Use this exact format:
                                   {
                                     "issues": [
                                       {
@@ -127,6 +127,8 @@ export class CodeReviewService {
                                       }
                                     ],
                                     "overallAssessment": "Overall code quality assessment",
+                                    "summary": "Brief summary of findings",
+                                    "filesAnalyzed": 1,
                                     "criticalIssues": 0,
                                     "warningIssues": 0,
                                     "infoIssues": 0
@@ -188,7 +190,7 @@ export class CodeReviewService {
                                   5. Code style consistency
                                   6. Regression risks
 
-                                  Provide your response in the following JSON format:
+                                  IMPORTANT: Your response must be ONLY a valid JSON object. Do not include any text before or after the JSON. Use this exact format:
                                   {
                                     "issues": [
                                       {
@@ -213,8 +215,14 @@ export class CodeReviewService {
                                       }
                                     ],
                                     "overallAssessment": "Overall assessment including new file integration",
+                                    "summary": "Brief summary of findings",
+                                    "filesAnalyzed": ${
+                                      newFiles.length + modifiedFiles.length
+                                    },
                                     "newFilesAnalyzed": ${newFiles.length},
-                                    "modifiedFilesAnalyzed": ${modifiedFiles.length},
+                                    "modifiedFilesAnalyzed": ${
+                                      modifiedFiles.length
+                                    },
                                     "criticalIssues": 0,
                                     "warningIssues": 0,
                                     "infoIssues": 0
@@ -351,43 +359,171 @@ ${
 Please provide detailed analysis with specific line numbers where applicable.`;
   }
 
-  private parseReviewContent(content: string, repoUrl: string): ReviewReport {
+  private parseReviewContent(
+    content: string,
+    repoPath: string = ""
+  ): ReviewReport {
+    console.log("Parsing review content...", content);
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
+      // First try to parse the entire content as JSON
+      let parsed: any;
+
+      try {
+        parsed = JSON.parse(content.trim());
+        console.log("Parsing review content parsed...", parsed);
+      } catch {
+        // If that fails, try to extract JSON from the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+
+        if (jsonMatch) {
+          const jsonContent = jsonMatch[0];
+          parsed = JSON.parse(jsonContent);
+        } else {
+          // Try to find JSON between code blocks
+          const codeBlockMatch = content.match(
+            /```(?:json)?\s*(\{[\s\S]*?\})\s*```/
+          );
+          if (codeBlockMatch) {
+            parsed = JSON.parse(codeBlockMatch[1]);
+          } else {
+            throw new Error("No JSON structure found in response");
+          }
+        }
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Validate and normalize the parsed content
+      if (parsed && typeof parsed === "object") {
+        const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
+        const suggestions = Array.isArray(parsed.suggestions)
+          ? parsed.suggestions
+          : [];
 
-      return {
-        repositoryUrl: repoUrl,
-        issues: parsed.issues || [],
-        suggestions: parsed.suggestions || [],
-        overallAssessment: parsed.overallAssessment || "No assessment provided",
-        summary: this.generateSummary(parsed),
-        filesAnalyzed: 0, // Will be populated by repository analyzer
-        criticalIssues: parsed.criticalIssues || 0,
-        warningIssues: parsed.warningIssues || 0,
-        infoIssues: parsed.infoIssues || 0,
-      };
+        return {
+          repositoryUrl: repoPath,
+          issues: issues.map((issue: any) => ({
+            file: issue.file || "",
+            line: Number(issue.line) || 0,
+            column: Number(issue.column) || 0,
+            severity: ["critical", "warning", "info"].includes(issue.severity)
+              ? (issue.severity as "critical" | "warning" | "info")
+              : "info",
+            category: [
+              "bug",
+              "security",
+              "performance",
+              "style",
+              "maintainability",
+            ].includes(issue.category)
+              ? (issue.category as
+                  | "bug"
+                  | "security"
+                  | "performance"
+                  | "style"
+                  | "maintainability")
+              : "style",
+            description: issue.description || "",
+            suggestion: issue.suggestion || "",
+            rule: issue.rule || "",
+          })),
+          suggestions: suggestions.map((suggestion: any) => ({
+            type: ["improvement", "refactoring", "optimization"].includes(
+              suggestion.type
+            )
+              ? (suggestion.type as
+                  | "improvement"
+                  | "refactoring"
+                  | "optimization")
+              : "improvement",
+            description: suggestion.description || "",
+            file: suggestion.file || "",
+            impact: ["high", "medium", "low"].includes(suggestion.impact)
+              ? (suggestion.impact as "high" | "medium" | "low")
+              : "medium",
+          })),
+          overallAssessment:
+            parsed.overallAssessment || "Code review completed",
+          summary:
+            parsed.summary ||
+            `Found ${issues.length} issues and ${suggestions.length} suggestions`,
+          filesAnalyzed: parsed.filesAnalyzed || 1,
+          criticalIssues:
+            Number(parsed.criticalIssues) ||
+            issues.filter((i: any) => i.severity === "critical").length,
+          warningIssues:
+            Number(parsed.warningIssues) ||
+            issues.filter((i: any) => i.severity === "warning").length,
+          infoIssues:
+            Number(parsed.infoIssues) ||
+            issues.filter((i: any) => i.severity === "info").length,
+        };
+      }
     } catch (error) {
-      console.warn(
-        "Failed to parse structured response, creating basic report"
-      );
-      return {
-        repositoryUrl: repoUrl,
-        issues: [],
-        suggestions: [],
-        overallAssessment: content.substring(0, 500) + "...",
-        summary: "Review completed but response format was not structured",
-        filesAnalyzed: 0,
-        criticalIssues: 0,
-        warningIssues: 0,
-        infoIssues: 0,
-      };
+      console.warn("Error parsing JSON response:", error);
+      console.log("Response content preview:", content.substring(0, 500));
     }
+
+    // Fallback: try to extract basic information from text
+    console.log(
+      "Failed to parse structured response, attempting text analysis..."
+    );
+
+    const textIssues = this.extractIssuesFromText(content);
+    return {
+      repositoryUrl: repoPath,
+      issues: textIssues,
+      suggestions: [],
+      overallAssessment:
+        content.substring(0, 200) + (content.length > 200 ? "..." : ""),
+      summary: `Text analysis found ${textIssues.length} potential issues`,
+      filesAnalyzed: 1,
+      criticalIssues: textIssues.filter((i) => i.severity === "critical")
+        .length,
+      warningIssues: textIssues.filter((i) => i.severity === "warning").length,
+      infoIssues: textIssues.filter((i) => i.severity === "info").length,
+    };
+  }
+
+  private extractIssuesFromText(content: string): any[] {
+    const issues: any[] = [];
+    const lines = content.split("\n");
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+
+      // Look for common issue indicators
+      if (
+        line.includes("error") ||
+        line.includes("issue") ||
+        line.includes("problem") ||
+        line.includes("bug") ||
+        line.includes("vulnerability") ||
+        line.includes("warning")
+      ) {
+        let severity: "critical" | "warning" | "info" = "info";
+        if (
+          line.includes("critical") ||
+          line.includes("error") ||
+          line.includes("vulnerability")
+        ) {
+          severity = "critical";
+        } else if (line.includes("warning") || line.includes("caution")) {
+          severity = "warning";
+        }
+
+        issues.push({
+          file: "",
+          line: 0,
+          column: 0,
+          severity,
+          category: line.includes("security") ? "security" : "style",
+          description: lines[i].trim(),
+          suggestion: i + 1 < lines.length ? lines[i + 1].trim() : "",
+          rule: "",
+        });
+      }
+    }
+
+    return issues.slice(0, 10); // Limit to 10 issues to avoid overwhelming output
   }
 
   private generateSummary(parsed: any): string {
