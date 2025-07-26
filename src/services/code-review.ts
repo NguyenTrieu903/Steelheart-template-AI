@@ -420,7 +420,6 @@ SENIOR DEVELOPER INSTRUCTIONS:
         prompt,
         systemInstruction
       );
-      console.log(`Generated comments for ${fileName}:`, response);
 
       // Extract code from markdown code blocks
       const extractedCode = this.extractCodeFromResponse(response, fileType);
