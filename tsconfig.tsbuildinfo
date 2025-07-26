@@ -1,1 +1,0 @@
-{"root":["./src/cli.ts","./src/index.ts","./src/setup.ts","./src/services/code-review.ts","./src/services/documentation.ts","./src/services/gemini-client.ts","./src/services/testing.ts","./src/templates/test-template.ts","./src/types/index.ts","./src/utils/repository-analyzer.ts"],"version":"5.8.3"}

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import * as dotenv from "dotenv";
@@ -6,39 +6,48 @@ import * as dotenv from "dotenv";
 // Load environment variables
 dotenv.config({ path: join(process.cwd(), ".env") });
 
-interface GeminiConfig {
+interface OpenAIConfig {
   apiKey: string;
   model?: string;
   fallbackModel?: string;
   temperature?: number;
-  topP?: number;
+  maxTokens?: number;
   maxRetries?: number;
+  organization?: string;
+  baseURL?: string;
 }
 
-export class GeminiClient {
-  private genAI: GoogleGenerativeAI;
-  private config: GeminiConfig;
+export class OpenAIClient {
+  private openai: OpenAI;
+  private config: OpenAIConfig;
 
   constructor(configPath?: string) {
     this.config = this.loadConfig(configPath);
-    this.genAI = new GoogleGenerativeAI(this.config.apiKey);
+    this.openai = new OpenAI({
+      apiKey: this.config.apiKey,
+      organization: this.config.organization,
+      baseURL: this.config.baseURL,
+      maxRetries: this.config.maxRetries || 3,
+    });
   }
 
-  private loadConfig(configPath?: string): GeminiConfig {
+  private loadConfig(configPath?: string): OpenAIConfig {
     // Try to load from config file first, then fall back to env variables
-    let config: GeminiConfig;
+    let config: OpenAIConfig;
 
     if (configPath) {
       try {
         const configFile = readFileSync(configPath, "utf-8");
         const fileConfig = JSON.parse(configFile);
         config = {
-          apiKey: fileConfig.apiKey || process.env.GEMINI_API_KEY,
-          model: fileConfig.model || "gemini-2.0-flash-exp",
-          fallbackModel: fileConfig.fallbackModel || "gemini-1.5-flash",
+          apiKey: fileConfig.apiKey || process.env.OPENAI_API_KEY,
+          model: fileConfig.model || "gpt-4o-mini",
+          fallbackModel: fileConfig.fallbackModel || "gpt-3.5-turbo",
           temperature: fileConfig.temperature || 0.7,
-          topP: fileConfig.topP || 0.8,
+          maxTokens: fileConfig.maxTokens || 4000,
           maxRetries: fileConfig.maxRetries || 3,
+          organization: fileConfig.organization || process.env.OPENAI_ORG_ID,
+          baseURL: fileConfig.baseURL || process.env.OPENAI_BASE_URL,
         };
       } catch (error) {
         console.warn("Could not load config file, using environment variables");
@@ -50,21 +59,23 @@ export class GeminiClient {
 
     if (!config.apiKey) {
       throw new Error(
-        "GEMINI_API_KEY environment variable is required. Get your API key from https://aistudio.google.com/apikey"
+        "OPENAI_API_KEY environment variable is required. Get your API key from https://platform.openai.com/api-keys"
       );
     }
 
     return config;
   }
 
-  private getDefaultConfig(): GeminiConfig {
+  private getDefaultConfig(): OpenAIConfig {
     return {
-      apiKey: process.env.GEMINI_API_KEY || "",
-      model: "gemini-2.0-flash-exp",
-      fallbackModel: "gemini-1.5-flash",
+      apiKey: process.env.OPENAI_API_KEY || "",
+      model: "gpt-4o-mini", // Most cost-effective for your $5 budget
+      fallbackModel: "gpt-3.5-turbo",
       temperature: 0.7,
-      topP: 0.8,
+      maxTokens: 4000,
       maxRetries: 3,
+      organization: process.env.OPENAI_ORG_ID,
+      baseURL: process.env.OPENAI_BASE_URL,
     };
   }
 
@@ -77,9 +88,9 @@ export class GeminiClient {
     try {
       return await this.generateWithModel(
         prompt,
-        systemInstruction,
         this.config.model!,
-        maxRetries
+        maxRetries,
+        systemInstruction
       );
     } catch (primaryError) {
       console.warn(
@@ -97,9 +108,9 @@ export class GeminiClient {
           );
           return await this.generateWithModel(
             prompt,
-            systemInstruction,
             this.config.fallbackModel,
-            maxRetries
+            maxRetries,
+            systemInstruction
           );
         } catch (fallbackError) {
           console.error(`Both primary and fallback models failed.`);
@@ -115,26 +126,36 @@ export class GeminiClient {
 
   private async generateWithModel(
     prompt: string,
-    systemInstruction: string | undefined,
     modelName: string,
-    maxRetries: number
+    maxRetries: number,
+    systemInstruction?: string
   ): Promise<string> {
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const model = this.genAI.getGenerativeModel({
-          model: modelName,
-          systemInstruction: systemInstruction,
-          generationConfig: {
-            temperature: this.config.temperature,
-            topP: this.config.topP,
-          },
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+          [];
+
+        // Add user message
+        messages.push({
+          role: "user",
+          content: prompt,
         });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
+        const response = await this.openai.chat.completions.create({
+          model: modelName,
+          messages,
+          temperature: this.config.temperature,
+          max_tokens: this.config.maxTokens,
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error("No content received from OpenAI");
+        }
+
+        return content;
       } catch (error: any) {
         lastError = error;
 
@@ -176,7 +197,7 @@ export class GeminiClient {
     // Retry on specific error conditions
     if (error.status) {
       // HTTP status codes that should be retried
-      const retryableStatusCodes = [429, 503, 502, 504]; // Rate limit, Service unavailable, Bad gateway, Gateway timeout
+      const retryableStatusCodes = [429, 503, 502, 504, 500]; // Rate limit, Service unavailable, Bad gateway, Gateway timeout, Internal server error
       return retryableStatusCodes.includes(error.status);
     }
 
@@ -189,6 +210,8 @@ export class GeminiClient {
         "service unavailable",
         "overloaded",
         "temporarily unavailable",
+        "rate limit",
+        "too many requests",
       ];
       const errorMessage = error.message.toLowerCase();
       return retryableMessages.some((msg) => errorMessage.includes(msg));
@@ -209,7 +232,7 @@ export class GeminiClient {
     const prompt = this.buildAnalysisPrompt(repoPath, analysisType);
     const systemInstruction = this.getSystemInstruction(analysisType);
 
-    return await this.generateContent(prompt, systemInstruction);
+    return await this.generateContent(prompt);
   }
 
   private buildAnalysisPrompt(repoPath: string, analysisType: string): string {
@@ -219,18 +242,42 @@ export class GeminiClient {
   private getSystemInstruction(analysisType: string): string {
     const instructions = {
       "code-review":
-        "You are an expert code reviewer. Analyze the code for bugs, security issues, performance problems, and best practices violations. Provide actionable feedback.",
+        "You are an expert code reviewer with 10+ years of experience. Analyze the code for bugs, security issues, performance problems, and best practices violations. Provide actionable feedback with specific recommendations for improvement.",
       documentation:
-        "You are a technical documentation expert. Generate comprehensive documentation including API docs, usage examples, and architectural overview.",
+        "You are a senior technical documentation expert. Generate comprehensive, clear documentation including API docs, usage examples, installation guides, and architectural overview. Focus on making complex concepts accessible.",
       testing:
-        "You are a testing expert. Generate unit tests and integration tests that provide good coverage and follow testing best practices.",
+        "You are a senior testing engineer and QA expert. Generate comprehensive unit tests, integration tests, and end-to-end tests that provide excellent coverage and follow testing best practices. Include edge cases and error scenarios.",
     };
 
     return (
       instructions[analysisType as keyof typeof instructions] ||
-      "You are a helpful AI assistant."
+      "You are a helpful senior software engineer with extensive experience in software development and best practices."
     );
+  }
+
+  // Utility method to estimate token usage for cost control
+  estimateTokens(text: string): number {
+    // Rough estimation: 1 token ≈ 4 characters for English text
+    return Math.ceil(text.length / 4);
+  }
+
+  // Method to check if we're approaching token limits
+  validateRequestSize(prompt: string, systemInstruction?: string): boolean {
+    const totalText = prompt + (systemInstruction || "");
+    const estimatedTokens = this.estimateTokens(totalText);
+
+    // Leave buffer for response tokens (typically need 25-50% of input for response)
+    const maxInputTokens = Math.floor((this.config.maxTokens || 4000) * 0.7);
+
+    if (estimatedTokens > maxInputTokens) {
+      console.warn(
+        `Warning: Request size (${estimatedTokens} tokens) may exceed limits. Consider reducing input size.`
+      );
+      return false;
+    }
+
+    return true;
   }
 }
 
-export default GeminiClient;
+export default OpenAIClient;

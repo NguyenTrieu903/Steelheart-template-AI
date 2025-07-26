@@ -1,362 +1,314 @@
-import { GeminiClient } from "./gemini-client";
-import {
-  TestConfig,
-  UnitTest,
-  IntegrationTest,
-  RepositoryAnalysis,
-} from "../types";
+import { RepositoryAnalysis } from "../types";
 import { analyzeRepository } from "../utils/repository-analyzer";
-import { writeFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { OpenAIClient } from "./openai-client";
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
+import { join, dirname, extname } from "path";
+import simpleGit from "simple-git";
 
 export class TestingService {
-  private geminiClient: GeminiClient;
+  private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.geminiClient = new GeminiClient(configPath);
+    this.openaiClient = new OpenAIClient(configPath);
   }
 
   async generateTests(
     repoPath: string,
-    outputPath?: string
-  ): Promise<TestConfig> {
+    outputPath?: string,
+    baseBranch: string = "main"
+  ): Promise<any> {
     try {
       console.log("Starting test generation...");
+      console.log(`Analyzing changes in repository: ${repoPath}`);
+      console.log(`Base branch: ${baseBranch}`);
 
-      // Analyze repository structure
-      const repoAnalysis = await analyzeRepository(repoPath);
+      // Get Git information and branch changes
+      const git = simpleGit(repoPath);
+      const currentBranch = (await git.branch()).current;
+      console.log(`Current branch: ${currentBranch}`);
 
-      // Generate tests using Gemini
-      const testContent = await this.generateTestContent(
-        repoPath,
-        repoAnalysis
-      );
+      // Get branch changes similar to other commands
+      const branchChanges = await this.getBranchChanges(repoPath, baseBranch);
 
-      // Parse and structure the tests
-      const testConfig = this.parseTestContent(testContent, repoPath);
-
-      // Save tests if output path is specified
-      if (outputPath) {
-        this.saveTests(testConfig, outputPath);
+      if (!branchChanges || branchChanges.changedFiles.length === 0) {
+        console.log("No changes found to generate tests for");
+        return { message: "No changes found", testsGenerated: 0 };
       }
 
-      console.log("Test generation completed successfully!");
-      return testConfig;
+      // Filter for JavaScript/TypeScript files that need tests
+      const codeFiles = branchChanges.changedFiles.filter(
+        (file) =>
+          file.file.match(/\.(js|ts|jsx|tsx)$/) &&
+          !file.file.match(/\.(test|spec)\.(js|ts|jsx|tsx)$/) &&
+          !file.file.includes("node_modules") &&
+          !file.file.includes("dist") &&
+          !file.file.includes("build")
+      );
+
+      if (codeFiles.length === 0) {
+        console.log("No code files found that need tests");
+        return { message: "No testable code files found", testsGenerated: 0 };
+      }
+
+      console.log(
+        `Found ${codeFiles.length} code files to generate tests for:`
+      );
+      codeFiles.forEach((file) => {
+        const status = file.isNew ? "[NEW]" : "[MODIFIED]";
+        console.log(`  • ${file.file} ${status}`);
+      });
+
+      // Generate tests for each file
+      const testResults = [];
+      for (const file of codeFiles) {
+        console.log(`\nGenerating tests for: ${file.file}`);
+
+        try {
+          const testResult = await this.generateTestForFile(
+            repoPath,
+            file,
+            branchChanges,
+            baseBranch,
+            outputPath
+          );
+          testResults.push(testResult);
+        } catch (error) {
+          console.error(`Error generating test for ${file.file}:`, error);
+          testResults.push({
+            file: file.file,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      // Summary
+      const successful = testResults.filter((r) => r.success);
+      const failed = testResults.filter((r) => !r.success);
+
+      console.log(`\n✅ Test generation completed!`);
+      console.log(`Files processed: ${testResults.length}`);
+      console.log(`Tests generated: ${successful.length}`);
+      if (failed.length > 0) {
+        console.log(`Failed: ${failed.length}`);
+        failed.forEach((f) => {
+          if ("error" in f) {
+            console.log(`  • ${f.file}: ${f.error}`);
+          }
+        });
+      }
+
+      return {
+        message: "Test generation completed",
+        testsGenerated: successful.length,
+        totalFiles: testResults.length,
+        results: testResults,
+      };
     } catch (error) {
       console.error("Error generating tests:", error);
       throw new Error(`Test generation failed: ${error}`);
     }
   }
 
-  private async generateTestContent(
-    repoPath: string,
-    analysis: RepositoryAnalysis
-  ): Promise<string> {
-    const prompt = this.buildTestPrompt(repoPath, analysis);
-    const systemInstruction = `You are a testing expert. Generate comprehensive unit tests and integration tests.
-        
-        Generate tests that include:
-        1. Unit tests for individual functions and classes
-        2. Integration tests for system components
-        3. Test cases covering edge cases and error scenarios
-        4. Proper setup and teardown procedures
-        5. Mock dependencies where appropriate
-        
-        Provide your response in the following JSON format:
-        {
-          "unitTests": [
-            {
-              "description": "Test description",
-              "filePath": "path/to/test/file.test.js",
-              "targetFunction": "functionName",
-              "code": "test code",
-              "testCases": [
-                {
-                  "name": "test case name",
-                  "input": "input data",
-                  "expectedOutput": "expected result",
-                  "description": "what this test verifies"
-                }
-              ]
-            }
-          ],
-          "integrationTests": [
-            {
-              "description": "Integration test description",
-              "filePath": "path/to/integration/test.test.js",
-              "setup": "setup code",
-              "execution": "test execution code",
-              "teardown": "cleanup code",
-              "dependencies": ["dependency1", "dependency2"]
-            }
-          ],
-          "testFramework": "jest|mocha|vitest|other"
-        }`;
-
-    return await this.geminiClient.generateContent(prompt, systemInstruction);
-  }
-
-  private buildTestPrompt(
-    repoPath: string,
-    analysis: RepositoryAnalysis
-  ): string {
-    const mainTechnology = analysis.technologies[0]?.name || "JavaScript";
-
-    return `Please generate comprehensive test suites for this repository:
-
-Repository Path: ${repoPath}
-
-Repository Analysis:
-- Primary Technology: ${mainTechnology}
-- Total Files: ${analysis.structure.totalFiles}
-- Technologies: ${analysis.technologies
-      .map((t) => `${t.name} ${t.version || ""}`)
-      .join(", ")}
-- Lines of Code: ${analysis.metrics.linesOfCode}
-- Complexity Score: ${analysis.metrics.complexity}
-
-Key Dependencies:
-${analysis.dependencies
-  .map((dep) => `- ${dep.name}@${dep.version} (${dep.type})`)
-  .join("\n")}
-
-Main Files to Test:
-${analysis.structure.mainFiles.join("\n")}
-
-Testing Requirements:
-1. Generate unit tests for core functions and classes
-2. Create integration tests for main workflows
-3. Include edge cases and error handling tests
-4. Use appropriate testing framework for ${mainTechnology}
-5. Provide meaningful test descriptions and assertions
-6. Include setup/teardown where needed
-
-Focus on testing critical business logic and potential failure points.`;
-  }
-
-  private parseTestContent(content: string, repoUrl: string): TestConfig {
+  private async getBranchChanges(repoPath: string, baseBranch: string) {
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response");
+      const git = simpleGit(repoPath);
+      const currentBranch = (await git.branch()).current;
+
+      // Get list of changed files
+      const diffSummary = await git.diffSummary([
+        `${baseBranch}...${currentBranch}`,
+      ]);
+
+      // Get detailed diff for each file
+      const changedFiles = [];
+      for (const file of diffSummary.files) {
+        const diff = await git.diff([
+          `${baseBranch}...${currentBranch}`,
+          "--",
+          file.file,
+        ]);
+        changedFiles.push({
+          file: file.file,
+          insertions: (file as any).insertions || 0,
+          deletions: (file as any).deletions || 0,
+          changes: (file as any).changes || 0,
+          isNew:
+            ((file as any).insertions > 0 && (file as any).deletions === 0) ||
+            false,
+          diff: diff,
+        });
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-
       return {
-        repositoryUrl: repoUrl,
-        unitTests: parsed.unitTests || [],
-        integrationTests: parsed.integrationTests || [],
-        testFramework: parsed.testFramework || "jest",
-        coverage: undefined, // Will be calculated after running tests
+        currentBranch,
+        baseBranch,
+        changedFiles,
+        totalFiles: changedFiles.length,
+        insertions: diffSummary.insertions,
+        deletions: diffSummary.deletions,
       };
     } catch (error) {
-      console.warn(
-        "Failed to parse structured test response, creating basic tests"
-      );
-      return {
-        repositoryUrl: repoUrl,
-        unitTests: [],
-        integrationTests: [],
-        testFramework: "jest",
-        coverage: undefined,
-      };
+      console.error("Error getting branch changes:", error);
+      return null;
     }
   }
 
-  private saveTests(testConfig: TestConfig, outputPath: string): void {
-    try {
-      // Ensure test directory exists
-      const testDir = join(outputPath, "tests");
-      mkdirSync(testDir, { recursive: true });
+  private async generateTestForFile(
+    repoPath: string,
+    fileInfo: any,
+    branchChanges: any,
+    baseBranch: string,
+    outputPath?: string
+  ) {
+    const filePath = join(repoPath, fileInfo.file);
 
-      // Save unit tests
-      testConfig.unitTests.forEach((test, index) => {
-        const fileName = test.filePath || `unit-test-${index + 1}.test.js`;
-        const testPath = join(testDir, fileName);
-
-        // Ensure subdirectory exists
-        mkdirSync(dirname(testPath), { recursive: true });
-
-        const testContent = this.generateUnitTestFile(
-          test,
-          testConfig.testFramework
-        );
-        writeFileSync(testPath, testContent);
-
-        console.log(`Unit test saved to: ${testPath}`);
-      });
-
-      // Save integration tests
-      testConfig.integrationTests.forEach((test, index) => {
-        const fileName =
-          test.filePath || `integration-test-${index + 1}.test.js`;
-        const testPath = join(testDir, fileName);
-
-        // Ensure subdirectory exists
-        mkdirSync(dirname(testPath), { recursive: true });
-
-        const testContent = this.generateIntegrationTestFile(
-          test,
-          testConfig.testFramework
-        );
-        writeFileSync(testPath, testContent);
-
-        console.log(`Integration test saved to: ${testPath}`);
-      });
-
-      // Save test configuration
-      const configPath = join(testDir, "test-config.json");
-      writeFileSync(configPath, JSON.stringify(testConfig, null, 2));
-
-      // Generate test runner script
-      const runnerPath = join(outputPath, "run-tests.sh");
-      const runnerScript = this.generateTestRunner(testConfig.testFramework);
-      writeFileSync(runnerPath, runnerScript);
-
-      console.log(`Test configuration saved to: ${configPath}`);
-      console.log(`Test runner script saved to: ${runnerPath}`);
-    } catch (error) {
-      console.error("Error saving tests:", error);
+    if (!existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
     }
+
+    // Read the current file content
+    const fileContent = readFileSync(filePath, "utf8");
+
+    // Get the diff for this specific file
+    const fileDiff = fileInfo.diff || "";
+
+    // Generate test content using AI
+    const testContent = await this.generateTestContent(
+      fileInfo.file,
+      fileContent,
+      fileDiff,
+      fileInfo.isNew
+    );
+
+    // Determine test file path
+    const testFilePath = this.getTestFilePath(filePath, outputPath);
+
+    // Write the test file
+    this.writeTestFile(testFilePath, testContent, fileInfo.file);
+
+    return {
+      file: fileInfo.file,
+      testFile: testFilePath,
+      success: true,
+      isNew: fileInfo.isNew,
+    };
   }
 
-  private generateUnitTestFile(test: UnitTest, framework: string): string {
-    const imports = this.getTestImports(framework);
-
-    return `${imports}
-
-// ${test.description}
-describe('${test.targetFunction}', () => {
-${test.testCases
-  .map(
-    (testCase) => `
-    it('${testCase.name}', () => {
-        // ${testCase.description}
-        ${test.code}
-        
-        // Test case: ${testCase.name}
-        const input = ${JSON.stringify(testCase.input)};
-        const expectedOutput = ${JSON.stringify(testCase.expectedOutput)};
-        
-        const result = ${test.targetFunction}(input);
-        expect(result).toBe(expectedOutput);
-    });
-`
-  )
-  .join("")}
-});
-`;
-  }
-
-  private generateIntegrationTestFile(
-    test: IntegrationTest,
-    framework: string
+  private getTestFilePath(
+    originalFilePath: string,
+    outputPath?: string
   ): string {
-    const imports = this.getTestImports(framework);
+    const ext = extname(originalFilePath);
+    const baseName = originalFilePath.replace(ext, "");
 
-    return `${imports}
+    if (outputPath) {
+      // Use specified output path
+      const fileName = baseName.split("/").pop() + ".test" + ext;
+      return join(outputPath, fileName);
+    } else {
+      // Place test file next to original file or in __tests__ directory
+      const dir = dirname(originalFilePath);
+      const fileName = baseName.split("/").pop() + ".test" + ext;
 
-// ${test.description}
-describe('Integration Test: ${test.description}', () => {
-    beforeAll(async () => {
-        // Setup
-        ${test.setup}
-    });
-
-    afterAll(async () => {
-        // Teardown
-        ${test.teardown || "// No teardown required"}
-    });
-
-    it('should execute integration test successfully', async () => {
-        // Test execution
-        ${test.execution}
-    });
-});
-`;
-  }
-
-  private getTestImports(framework: string): string {
-    switch (framework.toLowerCase()) {
-      case "jest":
-        return `const { describe, it, expect, beforeAll, afterAll } = require('@jest/globals');`;
-      case "mocha":
-        return `const { describe, it, beforeAll, afterAll } = require('mocha');
-const { expect } = require('chai');`;
-      case "vitest":
-        return `import { describe, it, expect, beforeAll, afterAll } from 'vitest';`;
-      default:
-        return `// Add your testing framework imports here`;
+      // Check if __tests__ directory exists
+      const testsDir = join(dir, "__tests__");
+      if (existsSync(testsDir)) {
+        return join(testsDir, fileName);
+      } else {
+        return join(dir, fileName);
+      }
     }
   }
 
-  private generateTestRunner(framework: string): string {
-    return `#!/bin/bash
+  private writeTestFile(
+    testFilePath: string,
+    content: string,
+    originalFile: string
+  ) {
+    // Ensure directory exists
+    const dir = dirname(testFilePath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
 
-# Test Runner Script
-# Generated by Gemini AI Template
-
-echo "Running tests with ${framework}..."
-
-# Install test dependencies if needed
-if [ ! -d "node_modules" ]; then
-    echo "Installing dependencies..."
-    npm install
-fi
-
-# Install test framework if not present
-case "${framework}" in
-    "jest")
-        npm install --save-dev jest @jest/globals
-        ;;
-    "mocha")
-        npm install --save-dev mocha chai
-        ;;
-    "vitest")
-        npm install --save-dev vitest
-        ;;
-esac
-
-# Run tests
-echo "Executing tests..."
-case "${framework}" in
-    "jest")
-        npx jest tests/
-        ;;
-    "mocha")
-        npx mocha tests/**/*.test.js
-        ;;
-    "vitest")
-        npx vitest tests/
-        ;;
-    *)
-        echo "Unknown test framework: ${framework}"
-        echo "Please run tests manually"
-        ;;
-esac
-
-echo "Test execution completed!"
-`;
+    // Check if test file already exists
+    if (existsSync(testFilePath)) {
+      console.log(`Test file already exists: ${testFilePath}`);
+      // Read existing content and append new tests
+      const existingContent = readFileSync(testFilePath, "utf8");
+      const mergedContent = this.mergeTestContent(
+        existingContent,
+        content,
+        originalFile
+      );
+      writeFileSync(testFilePath, mergedContent);
+      console.log(`✅ Updated existing test file: ${testFilePath}`);
+    } else {
+      writeFileSync(testFilePath, content);
+      console.log(`✅ Created new test file: ${testFilePath}`);
+    }
   }
-}
 
-// Legacy functions for backward compatibility
-export async function writeUnitTest(
-  repoPath: string,
-  outputPath?: string
-): Promise<string> {
-  const service = new TestingService();
-  const testConfig = await service.generateTests(repoPath, outputPath);
-  return `Generated ${testConfig.unitTests.length} unit tests and ${testConfig.integrationTests.length} integration tests`;
-}
+  private mergeTestContent(
+    existingContent: string,
+    newContent: string,
+    originalFile: string
+  ): string {
+    // Simple merge strategy: add new tests at the end with a comment
+    const separator = `\n\n// Tests for changes in ${originalFile}\n`;
+    return existingContent + separator + newContent;
+  }
 
-export async function runIntegrationTest(repoPath: string): Promise<string> {
-  return new Promise((resolve) => {
-    // Simulate running integration tests
-    setTimeout(() => {
-      resolve(`Integration tests completed for repository: ${repoPath}`);
-    }, 2000);
-  });
+  private async generateTestContent(
+    fileName: string,
+    fileContent: string,
+    fileDiff: string,
+    isNewFile: boolean
+  ): Promise<string> {
+    const fileType =
+      fileName.endsWith(".ts") || fileName.endsWith(".tsx")
+        ? "TypeScript"
+        : "JavaScript";
+    const testFramework = "Jest";
+
+    const prompt = `Generate comprehensive ${testFramework} unit tests for the ${fileType} file: ${fileName}
+
+                          FILE CONTENT:
+                          \`\`\`${fileType.toLowerCase()}
+                          ${fileContent}
+                          \`\`\`
+
+                          ${
+                            isNewFile
+                              ? "This is a NEW file"
+                              : "CHANGES MADE (Git Diff):"
+                          }
+                          ${
+                            isNewFile
+                              ? "Generate tests for all functions, classes, and methods in this file."
+                              : `\`\`\`diff\n${fileDiff}\n\`\`\``
+                          }
+
+                          Requirements:
+                          1. Generate tests ONLY for the ${
+                            isNewFile
+                              ? "functions, classes, and methods"
+                              : "added or modified code shown in the diff"
+                          }
+                          2. Use ${testFramework} testing framework with describe, test/it, and expect assertions
+                          3. Include edge cases and error scenarios
+                          4. Mock external dependencies appropriately
+                          5. Follow ${fileType} best practices
+                          6. Ensure tests are syntactically correct and runnable
+                          7. Add descriptive test names and comments
+                          8. Test both success and failure cases where applicable
+
+                          Generate a complete test file that can be saved as ${fileName.replace(
+                            /\.(js|ts|jsx|tsx)$/,
+                            ".test.$1"
+                          )}`;
+
+    return await this.openaiClient.generateContent(prompt);
+  }
 }
