@@ -23,11 +23,12 @@ export class TestingService {
 
   // Part 1: Check if the source has set up unit test, if not, set it up
   private async checkAndSetupTestInfrastructure(
-    repoPath: string
+    repoPath: string,
+    sourcePath: string = process.cwd()
   ): Promise<TestSetupResult> {
     console.log("🔍 Checking test infrastructure...");
 
-    const packageJsonPath = join(repoPath, "package.json");
+    const packageJsonPath = join(sourcePath, "package.json");
     let hasTestSetup = false;
     let testDirectory = "";
     let setupPerformed = false;
@@ -64,7 +65,7 @@ export class TestingService {
         } else {
           console.log("⚠️  Test infrastructure not found, setting up...");
           const setupResult = await this.setupTestInfrastructure(
-            repoPath,
+            sourcePath,
             packageJson
           );
           testDirectory = setupResult.testDirectory;
