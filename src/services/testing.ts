@@ -236,7 +236,9 @@ describe('Sample Test Suite', () => {
       console.log(`Base branch: ${baseBranch}`);
 
       // Part 1: Check and setup test infrastructure
-      const testSetup = await this.checkAndSetupTestInfrastructure(repoPath);
+      const testSetup = await this.checkAndSetupTestInfrastructure(
+        `${process.cwd()}/src`
+      );
 
       const git = simpleGit(repoPath);
       const currentBranch = (await git.branch()).current;
