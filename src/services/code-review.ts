@@ -1,6 +1,7 @@
 import { OpenAIClient } from "./openai-client";
 import { ReviewReport, Issue, Suggestion, RepositoryAnalysis } from "../types";
 import { analyzeRepository } from "../utils/repository-analyzer";
+import { extractCodeFromResponse, getFileType } from "../utils/code-extraction";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 
@@ -27,7 +28,6 @@ export class CodeReviewService {
         repoAnalysis,
         branchChanges
       );
-      console.log("Review content generated successfully! /n", reviewContent);
       if (outputPath) {
         this.saveRawReviewContent(reviewContent, outputPath, "branch-review");
       }
@@ -141,106 +141,117 @@ export class CodeReviewService {
 
     return `Please perform a comprehensive code review of this branch with focus on BOTH new files and modified files:
 
-Repository Path: ${repoPath}
-Branch: ${branchChanges.currentBranch} (compared to ${branchChanges.baseBranch})
+                Repository Path: ${repoPath}
+                Branch: ${branchChanges.currentBranch} (compared to ${
+      branchChanges.baseBranch
+    })
 
-## Repository Context:
-- Total Files: ${analysis.structure.totalFiles}
-- Technologies: ${analysis.technologies
-      .map((t) => `${t.name} ${t.version || ""}`)
-      .join(", ")}
-- Lines of Code: ${analysis.metrics.linesOfCode}
+                ## Repository Context:
+                - Total Files: ${analysis.structure.totalFiles}
+                - Technologies: ${analysis.technologies
+                  .map((t) => `${t.name} ${t.version || ""}`)
+                  .join(", ")}
+                - Lines of Code: ${analysis.metrics.linesOfCode}
 
-## Branch Changes Summary:
-- Total Files Changed: ${branchChanges.totalChanges}
-- New Files Added: ${newFiles.length}
-- Existing Files Modified: ${modifiedFiles.length}
-- Lines Added: ${branchChanges.totalInsertions}
-- Lines Removed: ${branchChanges.totalDeletions}
+                ## Branch Changes Summary:
+                - Total Files Changed: ${branchChanges.totalChanges}
+                - New Files Added: ${newFiles.length}
+                - Existing Files Modified: ${modifiedFiles.length}
+                - Lines Added: ${branchChanges.totalInsertions}
+                - Lines Removed: ${branchChanges.totalDeletions}
 
-## NEW FILES (Full Review Required):
-${
-  newFiles.length > 0
-    ? newFiles
-        .map(
-          (file: any) =>
-            `### ${file.file} (+${file.insertions || 0} lines)
-${
-  newFileContents[file.file]
-    ? `\`\`\`\n${newFileContents[file.file].substring(0, 200000)}\n${
-        newFileContents[file.file].length > 200000 ? "... (truncated)\n" : ""
-      }\`\`\``
-    : "Content not available"
-}
-`
-        )
-        .join("\n")
-    : "None"
-}
+                ## NEW FILES (Full Review Required):
+                ${
+                  newFiles.length > 0
+                    ? newFiles
+                        .map(
+                          (file: any) =>
+                            `### ${file.file} (+${file.insertions || 0} lines)
+                ${
+                  newFileContents[file.file]
+                    ? `\`\`\`\n${newFileContents[file.file].substring(
+                        0,
+                        200000
+                      )}\n${
+                        newFileContents[file.file].length > 200000
+                          ? "... (truncated)\n"
+                          : ""
+                      }\`\`\``
+                    : "Content not available"
+                }
+                `
+                        )
+                        .join("\n")
+                    : "None"
+                }
 
-## MODIFIED FILES (Change Review Required):
-${
-  modifiedFiles.length > 0
-    ? modifiedFiles
-        .map(
-          (file: any) =>
-            `### ${file.file} (+${file.insertions || 0} -${file.deletions || 0})
-${
-  modifiedFileContents[file.file]
-    ? `**Current File Content:**
-\`\`\`
-${modifiedFileContents[file.file].substring(0, 100000)}${
-        modifiedFileContents[file.file].length > 100000
-          ? "\n... (truncated for length)"
-          : ""
-      }
-\`\`\`
+                ## MODIFIED FILES (Change Review Required):
+                ${
+                  modifiedFiles.length > 0
+                    ? modifiedFiles
+                        .map(
+                          (file: any) =>
+                            `### ${file.file} (+${file.insertions || 0} -${
+                              file.deletions || 0
+                            })
+                ${
+                  modifiedFileContents[file.file]
+                    ? `**Current File Content:**
+                \`\`\`
+                ${modifiedFileContents[file.file].substring(0, 100000)}${
+                        modifiedFileContents[file.file].length > 100000
+                          ? "\n... (truncated for length)"
+                          : ""
+                      }
+                \`\`\`
 
-**Changes in this file:**
-\`\`\`diff
-${file.diff || "No diff available"}
-\`\`\``
-    : "Content not available"
-}
-`
-        )
-        .join("\n")
-    : "None"
-}
+                **Changes in this file:**
+                \`\`\`diff
+                ${file.diff || "No diff available"}
+                \`\`\``
+                    : "Content not available"
+                }
+                `
+                        )
+                        .join("\n")
+                    : "None"
+                }
 
-## Diff Changes:
-\`\`\`diff
-${branchChanges.diffContent.substring(0, 3000)}
-${
-  branchChanges.diffContent.length > 3000 ? "\n... (truncated for brevity)" : ""
-}
-\`\`\`
+                ## Diff Changes:
+                \`\`\`diff
+                ${branchChanges.diffContent.substring(0, 3000)}
+                ${
+                  branchChanges.diffContent.length > 3000
+                    ? "\n... (truncated for brevity)"
+                    : ""
+                }
+                \`\`\`
 
-## Review Requirements:
+                ## Review Requirements:
 
-**For NEW FILES - Perform complete analysis:**
-1. Architecture and design patterns compliance
-2. Code quality and adherence to best practices  
-3. Security vulnerabilities and potential attack vectors
-4. Performance implications and optimizations
-5. Error handling and edge case coverage
-6. Integration points with existing codebase
-7. Documentation and maintainability
-8. Testing strategy recommendations
+                **For NEW FILES - Perform complete analysis:**
+                1. Architecture and design patterns compliance
+                2. Code quality and adherence to best practices  
+                3. Security vulnerabilities and potential attack vectors
+                4. Performance implications and optimizations
+                5. Error handling and edge case coverage
+                6. Integration points with existing codebase
+                7. Documentation and maintainability
+                8. Testing strategy recommendations
 
-**For MODIFIED FILES - Analyze changes thoroughly:**
-1. Review each change in the diff carefully
-2. Impact assessment on existing functionality
-3. Breaking change identification and regression risks
-4. Security implications of modifications
-5. Performance impact analysis of the changes
-6. Code style consistency with existing patterns
-7. Logic correctness and error handling improvements
-8. Test coverage needs for modified functionality
+                **For MODIFIED FILES - Analyze changes thoroughly:**
+                1. Review each change in the diff carefully
+                2. Impact assessment on existing functionality
+                3. Breaking change identification and regression risks
+                4. Security implications of modifications
+                5. Performance impact analysis of the changes
+                6. Code style consistency with existing patterns
+                7. Logic correctness and error handling improvements
+                8. Test coverage needs for modified functionality
 
-**IMPORTANT:** Provide equal attention to both new and modified files. For modified files, focus on understanding what changed and why, then assess the impact and quality of those specific changes.
+                **IMPORTANT:** Provide equal attention to both new and modified files. For modified files, focus on understanding what changed and why, then assess the impact and quality of those specific changes.
 
-Please provide detailed analysis with specific line numbers and actionable feedback for both new files and modifications.`;
+                Please provide detailed analysis with specific line numbers and actionable feedback for both new files and modifications.`;
   }
 
   private saveRawReviewContent(
@@ -252,10 +263,8 @@ Please provide detailed analysis with specific line numbers and actionable feedb
       const fileName = `${prefix}-${new Date().toISOString().split("T")[0]}.md`;
       const filePath = join(outputPath, fileName);
 
-      // Ensure directory exists
       mkdirSync(dirname(filePath), { recursive: true });
 
-      // Save raw content as markdown
       writeFileSync(filePath, content);
 
       console.log(`Raw review content saved to: ${filePath}`);
@@ -264,14 +273,12 @@ Please provide detailed analysis with specific line numbers and actionable feedb
     }
   }
 
-  // Auto-comment method for new and changed code
   public async autoCommentChangedCode(
     repoPath: string,
     branchChanges: any
   ): Promise<any[]> {
     const results: any[] = [];
 
-    // Filter for code files that can be commented
     const codeFiles = branchChanges.changedFiles.filter((file: any) =>
       file.file.match(/\.(js|ts|jsx|tsx|py|java|go|rs|php|rb|cpp|c|h)$/)
     );
@@ -295,13 +302,10 @@ Please provide detailed analysis with specific line numbers and actionable feedb
           `   Processing: ${fileInfo.file}${fileInfo.isNew ? " [NEW]" : ""}`
         );
 
-        // Read the file content
         const fileContent = readFileSync(filePath, "utf8");
 
-        // Get the diff for this specific file
         const fileDiff = fileInfo.diff || "";
 
-        // Generate AI comments with the enhanced prompt
         const commentedCode = await this.generateSmartComments(
           fileInfo.file,
           fileContent,
@@ -309,7 +313,6 @@ Please provide detailed analysis with specific line numbers and actionable feedb
           fileInfo.isNew
         );
 
-        // Only write if there are actual changes
         if (
           commentedCode.content !== fileContent &&
           commentedCode.commentsAdded > 0
@@ -347,71 +350,65 @@ Please provide detailed analysis with specific line numbers and actionable feedb
     return results;
   }
 
-  // Enhanced comment generation with senior developer prompt
   private async generateSmartComments(
     fileName: string,
     fileContent: string,
     fileDiff: string,
     isNewFile: boolean
   ): Promise<{ content: string; commentsAdded: number; preview: string }> {
-    const fileType =
-      fileName.endsWith(".ts") || fileName.endsWith(".tsx")
-        ? "TypeScript"
-        : fileName.endsWith(".py")
-        ? "Python"
-        : fileName.endsWith(".java")
-        ? "Java"
-        : fileName.endsWith(".go")
-        ? "Go"
-        : "JavaScript";
+    const fileType = getFileType(fileName);
 
     const prompt = `As a senior developer, auto-comment all newly added or changed ${fileType} functions and modules in this code. Include inline suggestions where test coverage or docstrings are missing.
 
-FILE: ${fileName}
-TYPE: ${isNewFile ? "NEW FILE" : "MODIFIED FILE"}
+                      FILE: ${fileName}
+                      TYPE: ${isNewFile ? "NEW FILE" : "MODIFIED FILE"}
 
-${isNewFile ? "FULL NEW FILE CONTENT:" : "CHANGES MADE (Git Diff):"}
-${
-  isNewFile
-    ? `\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
-    : `\`\`\`diff\n${fileDiff}\n\`\`\``
-}
+                      ${
+                        isNewFile
+                          ? "FULL NEW FILE CONTENT:"
+                          : "CHANGES MADE (Git Diff):"
+                      }
+                      ${
+                        isNewFile
+                          ? `\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
+                          : `\`\`\`diff\n${fileDiff}\n\`\`\``
+                      }
 
-${
-  !isNewFile
-    ? `\nFULL FILE CONTEXT:\n\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
-    : ""
-}
+                      ${
+                        !isNewFile
+                          ? `\nFULL FILE CONTEXT:\n\`\`\`${fileType.toLowerCase()}\n${fileContent}\n\`\`\``
+                          : ""
+                      }
 
-SENIOR DEVELOPER INSTRUCTIONS:
-1. **Focus on NEW/CHANGED code only** - Don't comment unchanged code
-2. **Add strategic comments for**:
-   - Complex business logic and algorithms
-   - Non-obvious implementation decisions
-   - Security considerations
-   - Performance implications
-   - Edge cases and error handling
-   - Integration points and dependencies
+                      SENIOR DEVELOPER INSTRUCTIONS:
+                      1. **Focus on NEW/CHANGED code only** - Don't comment unchanged code
+                      2. **Add strategic comments for**:
+                        - Complex business logic and algorithms
+                        - Non-obvious implementation decisions
+                        - Security considerations
+                        - Performance implications
+                        - Edge cases and error handling
+                        - Integration points and dependencies
 
-3. **Include inline suggestions where missing**:
-   - "// TODO: Add unit tests for edge cases"
-   - "// TODO: Add JSDoc/docstring for this function"
-   - "// SUGGESTION: Consider error handling for..."
-   - "// PERFORMANCE: Consider caching this expensive operation"
-   - "// SECURITY: Validate input parameters"
+                      3. **Include inline suggestions where missing**:
+                        - "// TODO: Add unit tests for edge cases"
+                        - "// TODO: Add JSDoc/docstring for this function"
+                        - "// SUGGESTION: Consider error handling for..."
+                        - "// PERFORMANCE: Consider caching this expensive operation"
+                        - "// SECURITY: Validate input parameters"
 
-4. **Comment style guidelines**:
-   - Use appropriate syntax for ${fileType}
-   - Focus on WHY, not WHAT
-   - Be concise but informative
-   - Add function/class documentation where missing
-   - Suggest improvements and testing needs
+                      4. **Comment style guidelines**:
+                        - Use appropriate syntax for ${fileType}
+                        - Focus on WHY, not WHAT
+                        - Be concise but informative
+                        - Add function/class documentation where missing
+                        - Suggest improvements and testing needs
 
-5. **Quality standards**:
-   - Don't over-comment obvious code
-   - Explain complex algorithms step-by-step
-   - Document API contracts and assumptions
-   - Highlight potential issues or improvements`;
+                      5. **Quality standards**:
+                        - Don't over-comment obvious code
+                        - Explain complex algorithms step-by-step
+                        - Document API contracts and assumptions
+                        - Highlight potential issues or improvements`;
 
     const systemInstruction = `You are a senior software engineer with 15+ years of experience in code review, documentation, and mentoring. Your role is to add meaningful, strategic comments that help junior developers understand complex code, improve code quality, and identify areas needing testing or documentation. Focus on code clarity, maintainability, and best practices.`;
 
@@ -421,8 +418,7 @@ SENIOR DEVELOPER INSTRUCTIONS:
         systemInstruction
       );
 
-      // Extract code from markdown code blocks
-      const extractedCode = this.extractCodeFromResponse(response, fileType);
+      const extractedCode = extractCodeFromResponse(response, fileType);
 
       return {
         content: extractedCode || fileContent,
@@ -433,98 +429,10 @@ SENIOR DEVELOPER INSTRUCTIONS:
       console.warn(`Failed to generate AI comments for ${fileName}:`, error);
     }
 
-    // Fallback: return original content
     return {
       content: fileContent,
       commentsAdded: 0,
       preview: `Could not generate comments for ${fileName}`,
     };
-  }
-
-  /**
-   * Extracts code from AI response that contains markdown formatting
-   */
-  private extractCodeFromResponse(
-    response: string,
-    fileType: string
-  ): string | null {
-    try {
-      // Try to find code block with language specification
-      const languagePatterns = [
-        fileType.toLowerCase(),
-        "javascript",
-        "js",
-        "typescript",
-        "ts",
-        "jsx",
-        "tsx",
-        "python",
-        "py",
-        "java",
-        "go",
-        "rust",
-        "rs",
-        "php",
-        "rb",
-        "cpp",
-        "c",
-        "h",
-      ];
-
-      // Look for code blocks with language specification
-      for (const lang of languagePatterns) {
-        const codeBlockRegex = new RegExp(
-          `\`\`\`${lang}\\s*\\n([\\s\\S]*?)\\n\`\`\``,
-          "i"
-        );
-        const match = response.match(codeBlockRegex);
-        if (match && match[1]) {
-          return match[1].trim();
-        }
-      }
-
-      // Try to find any code block without language specification
-      const genericCodeBlockRegex = /```\s*\n([\s\S]*?)\n```/;
-      const genericMatch = response.match(genericCodeBlockRegex);
-      if (genericMatch && genericMatch[1]) {
-        return genericMatch[1].trim();
-      }
-
-      // If no code blocks found, look for the largest block of code-like content
-      // This would be content that has proper indentation and code structure
-      const lines = response.split("\n");
-      let codeStart = -1;
-      let codeEnd = -1;
-
-      // Find start of code (lines that look like imports, functions, etc.)
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (
-          line.match(
-            /^(import|export|const|let|var|function|class|\/\*|\/\/|\{|\}|<|>)/
-          )
-        ) {
-          codeStart = i;
-          break;
-        }
-      }
-
-      // Find end of code (last meaningful code line)
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (line.match(/^(export|return|\}|>;|;|\/\*|\/\/)/)) {
-          codeEnd = i;
-          break;
-        }
-      }
-
-      if (codeStart !== -1 && codeEnd !== -1 && codeEnd > codeStart) {
-        return lines.slice(codeStart, codeEnd + 1).join("\n");
-      }
-    } catch (error) {
-      console.warn("Error extracting code from response:", error);
-    }
-
-    return null;
   }
 }

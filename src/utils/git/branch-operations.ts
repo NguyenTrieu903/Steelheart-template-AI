@@ -12,12 +12,10 @@ export const getBranchChanges = async (
     const git = simpleGit(repoPath);
     const currentBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
 
-    // Check if base branch exists, fallback to origin/main, origin/master, or HEAD~1
     let actualBaseBranch = baseBranch;
     try {
       await git.revparse([`--verify`, `${baseBranch}`]);
     } catch {
-      // Try remote branches
       try {
         await git.revparse([`--verify`, `origin/${baseBranch}`]);
         actualBaseBranch = `origin/${baseBranch}`;
@@ -30,14 +28,12 @@ export const getBranchChanges = async (
             await git.revparse([`--verify`, `master`]);
             actualBaseBranch = `master`;
           } catch {
-            // Fallback to comparing with HEAD~1 (previous commit)
             actualBaseBranch = `HEAD~1`;
           }
         }
       }
     }
 
-    // If we're on the base branch, compare with HEAD~1
     if (
       currentBranch.trim() === baseBranch ||
       currentBranch.trim() === actualBaseBranch.replace("origin/", "")
@@ -45,12 +41,10 @@ export const getBranchChanges = async (
       actualBaseBranch = `HEAD~1`;
     }
 
-    // Get commits between base branch and current branch
     const commits = await git.log([
       `${actualBaseBranch}..${currentBranch.trim()}`,
     ]);
 
-    // Get file changes (diff)
     let diffSummary, diffContent;
     let newFiles: string[] = [];
     let modifiedFiles: string[] = [];
@@ -78,7 +72,6 @@ export const getBranchChanges = async (
             .filter((f) => f)
         );
 
-      // Get staged added files using git diff --cached --name-status
       const stagedAddedFiles = await git
         .raw(["diff", "--cached", "--name-status"])
         .then((output) => {

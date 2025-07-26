@@ -12,6 +12,7 @@ import {
 import { validateApiKey, getOutputDir } from "../utils/config/config-manager";
 import { getGitInfo } from "../utils/git/git-info";
 import { getBranchChanges } from "../utils/git/branch-operations";
+import { findGitRoot, getRelativePathFromGitRoot } from "../utils/git/git-root";
 import { detectProjectType } from "../utils/project-analyzer";
 import { CodeReviewService } from "../services/code-review";
 
@@ -20,6 +21,10 @@ export const autoReviewCommand = new Command("auto-review")
   .description("🤖 Smart auto-review for code changes")
   .option("-o, --output <dir>", "Output directory")
   .option("-b, --base <branch>", "Base branch to compare against", "main")
+  .option(
+    "-r, --repo-path <path>",
+    "Repository path (auto-detected if not specified)"
+  )
   .option("--staged", "Review only staged changes")
   .option("--include-local", "Include uncommitted local changes")
   .option("--auto-comment", "Enable auto-commenting on reviewed code")
@@ -28,7 +33,32 @@ export const autoReviewCommand = new Command("auto-review")
     showBanner();
     if (!validateApiKey()) return;
 
-    const repoPath = process.cwd();
+    // Smart repository path detection
+    let repoPath: string;
+
+    if (options.repoPath) {
+      // Use explicitly provided path
+      repoPath = options.repoPath;
+    } else {
+      // Auto-detect Git repository root
+      const detectedGitRoot = findGitRoot();
+      if (!detectedGitRoot) {
+        logError("❌ Not in a Git repository!");
+        logInfo(
+          "💡 Run this command from within a Git repository or use --repo-path"
+        );
+        return;
+      }
+      repoPath = detectedGitRoot;
+
+      // Show helpful info if running from subdirectory
+      const currentDir = process.cwd();
+      if (currentDir !== repoPath) {
+        const relativePath = getRelativePathFromGitRoot(repoPath, currentDir);
+        logInfo(`📂 Auto-detected Git root: ${repoPath}`);
+        logInfo(`📍 Running from subdirectory: ${relativePath}`);
+      }
+    }
     const spinner = ora("Auto-detecting repository changes...").start();
 
     try {

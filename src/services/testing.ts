@@ -1,15 +1,229 @@
 import { RepositoryAnalysis } from "../types";
+import { getBranchChanges } from "../utils";
+import { extractCodeFromResponse, getFileType } from "../utils/code-extraction";
 import { analyzeRepository } from "../utils/repository-analyzer";
 import { OpenAIClient } from "./openai-client";
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
-import { join, dirname, extname } from "path";
+import { join, dirname, extname, resolve } from "path";
 import simpleGit from "simple-git";
+
+interface TestSetupResult {
+  hasTestSetup: boolean;
+  testDirectory: string;
+  packageJsonPath: string;
+  setupPerformed: boolean;
+}
 
 export class TestingService {
   private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
     this.openaiClient = new OpenAIClient(configPath);
+  }
+
+  // Part 1: Check if the source has set up unit test, if not, set it up
+  private async checkAndSetupTestInfrastructure(
+    repoPath: string,
+    sourcePath: string = process.cwd()
+  ): Promise<TestSetupResult> {
+    console.log("🔍 Checking test infrastructure...");
+
+    const packageJsonPath = join(sourcePath, "package.json");
+    let hasTestSetup = false;
+    let testDirectory = "";
+    let setupPerformed = false;
+
+    // Check if package.json exists (for Node.js/JavaScript projects)
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+
+        // Check if test scripts and dependencies are configured
+        const hasTestScript =
+          packageJson.scripts &&
+          (packageJson.scripts.test ||
+            packageJson.scripts["test:unit"] ||
+            packageJson.scripts.jest);
+
+        const hasTestDeps =
+          (packageJson.devDependencies &&
+            (packageJson.devDependencies.jest ||
+              packageJson.devDependencies.mocha ||
+              packageJson.devDependencies.vitest ||
+              packageJson.devDependencies["@testing-library/jest-dom"])) ||
+          (packageJson.dependencies &&
+            (packageJson.dependencies.jest ||
+              packageJson.dependencies.mocha ||
+              packageJson.dependencies.vitest));
+
+        hasTestSetup = hasTestScript && hasTestDeps;
+
+        if (hasTestSetup) {
+          console.log("✅ Test infrastructure already configured");
+          // Determine test directory based on existing setup
+          testDirectory = this.findExistingTestDirectory(repoPath);
+        } else {
+          console.log("⚠️  Test infrastructure not found, setting up...");
+          const setupResult = await this.setupTestInfrastructure(
+            sourcePath,
+            packageJson
+          );
+          testDirectory = setupResult.testDirectory;
+          setupPerformed = setupResult.setupPerformed;
+          hasTestSetup = true;
+        }
+      } catch (error) {
+        console.error("Error reading package.json:", error);
+        // Fallback: create basic test directory
+        testDirectory = join(repoPath, "tests");
+        setupPerformed = true;
+      }
+    } else {
+      console.log("📦 No package.json found, creating basic test structure...");
+      // For non-Node.js projects, create a basic tests directory
+      testDirectory = join(repoPath, "tests");
+      if (!existsSync(testDirectory)) {
+        mkdirSync(testDirectory, { recursive: true });
+        setupPerformed = true;
+        console.log(`✅ Created test directory: ${testDirectory}`);
+      }
+    }
+
+    return {
+      hasTestSetup,
+      testDirectory,
+      packageJsonPath,
+      setupPerformed,
+    };
+  }
+
+  private findExistingTestDirectory(repoPath: string): string {
+    const possibleTestDirs = [
+      join(repoPath, "__tests__"),
+      join(repoPath, "tests"),
+      join(repoPath, "test"),
+      join(repoPath, "src", "__tests__"),
+      join(repoPath, "src", "tests"),
+      join(repoPath, "spec"),
+    ];
+
+    for (const dir of possibleTestDirs) {
+      if (existsSync(dir)) {
+        console.log(`📁 Found existing test directory: ${dir}`);
+        return dir;
+      }
+    }
+
+    // Default to __tests__ if none found
+    const defaultTestDir = join(repoPath, "__tests__");
+    console.log(`📁 Using default test directory: ${defaultTestDir}`);
+    return defaultTestDir;
+  }
+
+  private async setupTestInfrastructure(
+    repoPath: string,
+    packageJson: any
+  ): Promise<{ testDirectory: string; setupPerformed: boolean }> {
+    console.log("🔧 Setting up test infrastructure...");
+
+    try {
+      // Update package.json with test dependencies and scripts
+      if (!packageJson.devDependencies) {
+        packageJson.devDependencies = {};
+      }
+
+      if (!packageJson.scripts) {
+        packageJson.scripts = {};
+      }
+
+      // Add Jest as the default testing framework
+      packageJson.devDependencies.jest = "^29.0.0";
+      packageJson.devDependencies["@types/jest"] = "^29.0.0";
+      packageJson.devDependencies["ts-jest"] = "^29.0.0";
+
+      // Add test scripts
+      if (!packageJson.scripts.test) {
+        packageJson.scripts.test = "jest";
+      }
+      if (!packageJson.scripts["test:watch"]) {
+        packageJson.scripts["test:watch"] = "jest --watch";
+      }
+      if (!packageJson.scripts["test:coverage"]) {
+        packageJson.scripts["test:coverage"] = "jest --coverage";
+      }
+
+      // Write updated package.json
+      const packageJsonPath = join(repoPath, "package.json");
+      writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      console.log("✅ Updated package.json with test dependencies");
+
+      // Create Jest configuration
+      const jestConfig = {
+        testEnvironment: "node",
+        collectCoverageFrom: [
+          "src/**/*.{js,ts,jsx,tsx}",
+          "!src/**/*.test.{js,ts,jsx,tsx}",
+          "!src/**/*.spec.{js,ts,jsx,tsx}",
+        ],
+        testMatch: [
+          "**/__tests__/**/*.(test|spec).{js,ts,jsx,tsx}",
+          "**/?(*.)(test|spec).{js,ts,jsx,tsx}",
+        ],
+        transform: {
+          "^.+\\.(ts|tsx)$": "ts-jest",
+        },
+      };
+
+      const jestConfigPath = join(repoPath, "jest.config.js");
+      if (!existsSync(jestConfigPath)) {
+        const jestConfigContent = `module.exports = ${JSON.stringify(
+          jestConfig,
+          null,
+          2
+        )};`;
+        writeFileSync(jestConfigPath, jestConfigContent);
+        console.log("✅ Created jest.config.js");
+      }
+
+      // Create test directory
+      const testDirectory = join(repoPath, "__tests__");
+      if (!existsSync(testDirectory)) {
+        mkdirSync(testDirectory, { recursive: true });
+        console.log(`✅ Created test directory: ${testDirectory}`);
+      }
+
+      // Create a sample test file if directory is empty
+      const sampleTestPath = join(testDirectory, "sample.test.js");
+      if (!existsSync(sampleTestPath)) {
+        const sampleTestContent = `// Sample test file
+describe('Sample Test Suite', () => {
+  test('should run basic test', () => {
+    expect(true).toBe(true);
+  });
+});
+`;
+        writeFileSync(sampleTestPath, sampleTestContent);
+        console.log("✅ Created sample test file");
+      }
+
+      console.log("🎉 Test infrastructure setup completed!");
+
+      return {
+        testDirectory,
+        setupPerformed: true,
+      };
+    } catch (error) {
+      console.error("❌ Error setting up test infrastructure:", error);
+      // Fallback: just create test directory
+      const fallbackTestDir = join(repoPath, "__tests__");
+      if (!existsSync(fallbackTestDir)) {
+        mkdirSync(fallbackTestDir, { recursive: true });
+      }
+      return {
+        testDirectory: fallbackTestDir,
+        setupPerformed: false,
+      };
+    }
   }
 
   async generateTests(
@@ -22,20 +236,26 @@ export class TestingService {
       console.log(`Analyzing changes in repository: ${repoPath}`);
       console.log(`Base branch: ${baseBranch}`);
 
-      // Get Git information and branch changes
+      // Part 1: Check and setup test infrastructure
+      const testSetup = await this.checkAndSetupTestInfrastructure(
+        `${process.cwd()}/src`
+      );
+
       const git = simpleGit(repoPath);
       const currentBranch = (await git.branch()).current;
       console.log(`Current branch: ${currentBranch}`);
 
-      // Get branch changes similar to other commands
-      const branchChanges = await this.getBranchChanges(repoPath, baseBranch);
+      const branchChanges = await getBranchChanges(repoPath, baseBranch);
 
       if (!branchChanges || branchChanges.changedFiles.length === 0) {
         console.log("No changes found to generate tests for");
-        return { message: "No changes found", testsGenerated: 0 };
+        return {
+          message: "No changes found",
+          testsGenerated: 0,
+          testSetup: testSetup,
+        };
       }
 
-      // Filter for JavaScript/TypeScript files that need tests
       const codeFiles = branchChanges.changedFiles.filter(
         (file) =>
           file.file.match(/\.(js|ts|jsx|tsx)$/) &&
@@ -47,7 +267,11 @@ export class TestingService {
 
       if (codeFiles.length === 0) {
         console.log("No code files found that need tests");
-        return { message: "No testable code files found", testsGenerated: 0 };
+        return {
+          message: "No testable code files found",
+          testsGenerated: 0,
+          testSetup: testSetup,
+        };
       }
 
       console.log(
@@ -58,7 +282,6 @@ export class TestingService {
         console.log(`  • ${file.file} ${status}`);
       });
 
-      // Generate tests for each file
       const testResults = [];
       for (const file of codeFiles) {
         console.log(`\nGenerating tests for: ${file.file}`);
@@ -69,7 +292,8 @@ export class TestingService {
             file,
             branchChanges,
             baseBranch,
-            outputPath
+            outputPath,
+            testSetup
           );
           testResults.push(testResult);
         } catch (error) {
@@ -82,7 +306,6 @@ export class TestingService {
         }
       }
 
-      // Summary
       const successful = testResults.filter((r) => r.success);
       const failed = testResults.filter((r) => !r.success);
 
@@ -103,54 +326,11 @@ export class TestingService {
         testsGenerated: successful.length,
         totalFiles: testResults.length,
         results: testResults,
+        testSetup: testSetup,
       };
     } catch (error) {
       console.error("Error generating tests:", error);
       throw new Error(`Test generation failed: ${error}`);
-    }
-  }
-
-  private async getBranchChanges(repoPath: string, baseBranch: string) {
-    try {
-      const git = simpleGit(repoPath);
-      const currentBranch = (await git.branch()).current;
-
-      // Get list of changed files
-      const diffSummary = await git.diffSummary([
-        `${baseBranch}...${currentBranch}`,
-      ]);
-
-      // Get detailed diff for each file
-      const changedFiles = [];
-      for (const file of diffSummary.files) {
-        const diff = await git.diff([
-          `${baseBranch}...${currentBranch}`,
-          "--",
-          file.file,
-        ]);
-        changedFiles.push({
-          file: file.file,
-          insertions: (file as any).insertions || 0,
-          deletions: (file as any).deletions || 0,
-          changes: (file as any).changes || 0,
-          isNew:
-            ((file as any).insertions > 0 && (file as any).deletions === 0) ||
-            false,
-          diff: diff,
-        });
-      }
-
-      return {
-        currentBranch,
-        baseBranch,
-        changedFiles,
-        totalFiles: changedFiles.length,
-        insertions: diffSummary.insertions,
-        deletions: diffSummary.deletions,
-      };
-    } catch (error) {
-      console.error("Error getting branch changes:", error);
-      return null;
     }
   }
 
@@ -159,7 +339,8 @@ export class TestingService {
     fileInfo: any,
     branchChanges: any,
     baseBranch: string,
-    outputPath?: string
+    outputPath?: string,
+    testSetup?: TestSetupResult
   ) {
     const filePath = join(repoPath, fileInfo.file);
 
@@ -167,13 +348,10 @@ export class TestingService {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    // Read the current file content
     const fileContent = readFileSync(filePath, "utf8");
 
-    // Get the diff for this specific file
     const fileDiff = fileInfo.diff || "";
 
-    // Generate test content using AI
     const testContent = await this.generateTestContent(
       fileInfo.file,
       fileContent,
@@ -181,11 +359,17 @@ export class TestingService {
       fileInfo.isNew
     );
 
-    // Determine test file path
-    const testFilePath = this.getTestFilePath(filePath, outputPath);
+    const fileType = getFileType(fileInfo.file);
+    const extractedCode = extractCodeFromResponse(testContent, fileType);
 
-    // Write the test file
-    this.writeTestFile(testFilePath, testContent, fileInfo.file);
+    // Part 2: Use test setup directory instead of output path when available
+    const testFilePath = this.getTestFilePath(filePath, outputPath, testSetup);
+
+    this.writeTestFile(
+      testFilePath,
+      extractedCode || testContent,
+      fileInfo.file
+    );
 
     return {
       file: fileInfo.file,
@@ -195,30 +379,45 @@ export class TestingService {
     };
   }
 
+  // Part 2: Determine test file path based on setup
   private getTestFilePath(
     originalFilePath: string,
-    outputPath?: string
+    outputPath?: string,
+    testSetup?: TestSetupResult
   ): string {
     const ext = extname(originalFilePath);
     const baseName = originalFilePath.replace(ext, "");
+    const fileName = baseName.split("/").pop() + ".test" + ext;
 
-    if (outputPath) {
-      // Use specified output path
-      const fileName = baseName.split("/").pop() + ".test" + ext;
-      return join(outputPath, fileName);
-    } else {
-      // Place test file next to original file or in __tests__ directory
-      const dir = dirname(originalFilePath);
-      const fileName = baseName.split("/").pop() + ".test" + ext;
+    if (testSetup && testSetup.testDirectory) {
+      console.log(
+        `📁 Using test infrastructure directory: ${testSetup.testDirectory}`
+      );
+      return join(testSetup.testDirectory, fileName);
+    }
 
-      // Check if __tests__ directory exists
-      const testsDir = join(dir, "__tests__");
-      if (existsSync(testsDir)) {
-        return join(testsDir, fileName);
-      } else {
-        return join(dir, fileName);
+    // Priority 3: Look for existing test directories near the source file
+    const dir = dirname(originalFilePath);
+    const possibleTestDirs = [
+      join(dir, "__tests__"),
+      join(dir, "tests"),
+      join(dir, "test"),
+    ];
+
+    for (const testDir of possibleTestDirs) {
+      if (existsSync(testDir)) {
+        console.log(`📁 Using existing local test directory: ${testDir}`);
+        return join(testDir, fileName);
       }
     }
+
+    // Priority 4: Create __tests__ directory next to source file
+    const localTestsDir = join(dir, "__tests__");
+    console.log(`📁 Creating local test directory: ${localTestsDir}`);
+    if (!existsSync(localTestsDir)) {
+      mkdirSync(localTestsDir, { recursive: true });
+    }
+    return join(localTestsDir, fileName);
   }
 
   private writeTestFile(
@@ -226,16 +425,13 @@ export class TestingService {
     content: string,
     originalFile: string
   ) {
-    // Ensure directory exists
     const dir = dirname(testFilePath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Check if test file already exists
     if (existsSync(testFilePath)) {
       console.log(`Test file already exists: ${testFilePath}`);
-      // Read existing content and append new tests
       const existingContent = readFileSync(testFilePath, "utf8");
       const mergedContent = this.mergeTestContent(
         existingContent,
@@ -255,7 +451,6 @@ export class TestingService {
     newContent: string,
     originalFile: string
   ): string {
-    // Simple merge strategy: add new tests at the end with a comment
     const separator = `\n\n// Tests for changes in ${originalFile}\n`;
     return existingContent + separator + newContent;
   }
@@ -266,10 +461,7 @@ export class TestingService {
     fileDiff: string,
     isNewFile: boolean
   ): Promise<string> {
-    const fileType =
-      fileName.endsWith(".ts") || fileName.endsWith(".tsx")
-        ? "TypeScript"
-        : "JavaScript";
+    const fileType = getFileType(fileName);
     const testFramework = "Jest";
 
     const prompt = `Generate comprehensive ${testFramework} unit tests for the ${fileType} file: ${fileName}

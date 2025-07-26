@@ -136,7 +136,6 @@ export const branchDocsCommand = new Command("branch-docs")
 
       logInfo("\n📋 Branch Documentation Summary:");
       logGray(`Branch: ${branchChanges.currentBranch}`);
-      logGray(`Commits: ${branchChanges.commits.length}`);
       logGray(`Files changed: ${branchChanges.changedFiles.length}`);
       if (options.includeLocal && branchChanges.includeUncommitted) {
         logGray(`Includes: Uncommitted local changes`);
