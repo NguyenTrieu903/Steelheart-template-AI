@@ -134,18 +134,72 @@ export const autoReviewCommand = new Command("auto-review")
       spinner.text = "Performing enhanced AI code review...";
       const service = new CodeReviewService();
 
-      await service.performBranchReview(repoPath, branchChanges, outputDir);
+      const reviewResult = await service.performBranchReview(
+        repoPath,
+        branchChanges,
+        outputDir
+      );
 
       spinner.succeed("Code review completed!");
 
-      logInfo("\n🤖 Enhanced Review Results:");
+      // Display structured review results
+      logInfo("\n🤖 AI Review Decision:");
+      if (reviewResult.decision === "PASS") {
+        logSuccess(`✅ REVIEW PASSED`);
+      } else {
+        logError(`❌ REVIEW FAILED`);
+      }
+
+      console.log(`📊 ${reviewResult.summary}\n`);
+
+      // Show critical issues (blocking)
+      if (reviewResult.criticalIssues.length > 0) {
+        logError("🔴 CRITICAL ISSUES (Must fix before merge):");
+        reviewResult.criticalIssues.forEach((issue, index) => {
+          console.log(`   ${index + 1}. ${issue}`);
+        });
+        console.log();
+      }
+
+      // Show major issues (should fix)
+      if (reviewResult.majorIssues.length > 0) {
+        logWarning("🟡 MAJOR ISSUES (Should fix before merge):");
+        reviewResult.majorIssues.forEach((issue, index) => {
+          console.log(`   ${index + 1}. ${issue}`);
+        });
+        console.log();
+      }
+
+      // Show minor issues (can fix later)
+      if (reviewResult.minorIssues.length > 0) {
+        logInfo("🔵 MINOR ISSUES (Can fix after merge):");
+        reviewResult.minorIssues.forEach((issue, index) => {
+          console.log(`   ${index + 1}. ${issue}`);
+        });
+        console.log();
+      }
+
+      logInfo("📄 Detailed Analysis:");
       logGray(`Branch: ${gitInfo.currentBranch}`);
       logGray(`Base: ${branchChanges.baseBranch}`);
       logGray(`Project Type: ${projectType}`);
       logGray(`Files Reviewed: ${branchChanges.changedFiles.length}`);
       logGray(`New Files: ${branchChanges.newFiles.length}`);
       logGray(`Modified Files: ${branchChanges.modifiedFiles.length}`);
-      logGray(`Report saved to: ${outputDir}`);
+      logGray(`Full Report: ${outputDir}`);
+
+      // Recommendation based on decision
+      if (reviewResult.decision === "FAIL") {
+        logError(
+          "\n🚫 RECOMMENDATION: Do not merge until critical issues are resolved"
+        );
+      } else if (reviewResult.majorIssues.length > 0) {
+        logWarning(
+          "\n⚠️  RECOMMENDATION: Consider fixing major issues before merge"
+        );
+      } else {
+        logSuccess("\n✅ RECOMMENDATION: Safe to merge");
+      }
 
       //Perform auto-commenting if enabled (after review is complete and saved)
       if (enableAutoComment) {

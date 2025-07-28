@@ -1,6 +1,6 @@
 {
   "name": "steelheart-ai",
-  "version": "2.1.15",
+  "version": "2.1.16",
   "description": "AI-powered code review, documentation generation, and testing toolkit using OpenAI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "ts-node src/index.ts",
-    "build": "tsc && tsc src/setup.ts --outDir dist --target es2020 --module commonjs",
+    "build": "tsc",
     "test": "jest --passWithNoTests",
     "demo": "npm run build && node demo.js",
     "review": "npm run build && node dist/cli.js review",
@@ -19,7 +19,7 @@
     "setup": "npm run build && node dist/cli.js setup",
     "all": "npm run build && node dist/cli.js all",
     "prepublishOnly": "npm run build",
-    "postinstall": "node dist/setup.js || echo 'Welcome to Steelheart AI! Run: steelheart setup to get started.'"
+    "postinstall": "echo 'Welcome to Steelheart AI! Run: npm run setup to get started.'"
   },
   "files": [
     "dist/**/*",

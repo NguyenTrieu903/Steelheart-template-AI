@@ -17,7 +17,14 @@ export class CodeReviewService {
     branchChanges: any,
     outputPath?: string,
     autoComment: boolean = false
-  ): Promise<any> {
+  ): Promise<{
+    decision: "PASS" | "FAIL";
+    criticalIssues: string[];
+    majorIssues: string[];
+    minorIssues: string[];
+    summary: string;
+    rawContent: string;
+  }> {
     try {
       console.log("Starting enhanced branch review analysis...");
 
@@ -28,6 +35,10 @@ export class CodeReviewService {
         repoAnalysis,
         branchChanges
       );
+
+      // Extract structured results from review content
+      const structuredResult = this.parseReviewContent(reviewContent);
+
       if (outputPath) {
         this.saveRawReviewContent(reviewContent, outputPath, "branch-review");
       }
@@ -40,7 +51,19 @@ export class CodeReviewService {
         );
       }
 
-      console.log("Enhanced branch code review completed successfully!");
+      console.log(`Review completed: ${structuredResult.decision}`);
+      if (structuredResult.criticalIssues.length > 0) {
+        console.log(
+          `❌ ${structuredResult.criticalIssues.length} critical issues found`
+        );
+      }
+      if (structuredResult.majorIssues.length > 0) {
+        console.log(
+          `⚠️  ${structuredResult.majorIssues.length} major issues found`
+        );
+      }
+
+      return structuredResult;
     } catch (error) {
       console.error("Error performing branch review:", error);
       throw new Error(`Branch code review failed: ${error}`);
@@ -92,35 +115,35 @@ export class CodeReviewService {
       newFileContents,
       modifiedFileContents
     );
-    const systemInstruction = `You are a senior code reviewer with 10+ years of experience. Perform a comprehensive code review focusing on:
+    const systemInstruction = `You are a senior code reviewer with 10+ years of experience. Your role is to provide a PASS/FAIL decision with detailed analysis.
 
-                                  FOR NEW FILES (complete review):
-                                  1. Architecture and design patterns
-                                  2. Code quality and best practices
-                                  3. Security vulnerabilities
-                                  4. Performance considerations
-                                  5. Error handling and edge cases
-                                  6. Documentation and comments
-                                  7. Testing considerations
-                                  8. Integration with existing codebase
-
-                                  FOR MODIFIED FILES (focused review on changes):
-                                  1. Review the actual changes made (analyze the diff)
-                                  2. Impact of changes on existing functionality
-                                  3. Potential breaking changes or regressions
-                                  4. Security implications of modifications
-                                  5. Performance impact of the changes
-                                  6. Code style consistency with existing code
-                                  7. Error handling for new/modified logic
-                                  8. Test coverage for modified functionality
-
-                                  IMPORTANT: 
-                                  - For NEW files: Review the entire file comprehensively
-                                  - For MODIFIED files: Focus on the changes but consider the full context
-                                  - Provide specific feedback on both what was added/changed and how it fits with existing code
-                                  - Flag any potential issues with the modifications
-                                  - Suggest improvements for both new and modified code
-                                  `;
+                                  RESPONSE FORMAT REQUIRED:
+                                  ## REVIEW DECISION: [PASS/FAIL]
+                                  
+                                  ## CRITICAL ISSUES (if any):
+                                  - [List blocking issues that cause FAIL]
+                                  
+                                  ## DETAILED ANALYSIS:
+                                  
+                                  ### NEW FILES:
+                                  [Comprehensive review of new files]
+                                  
+                                  ### MODIFIED FILES:
+                                  [Focused review on changes and their impact]
+                                  
+                                  ## SEVERITY LEVELS:
+                                  🔴 **CRITICAL** - Blocks merge (security, breaking changes, critical bugs)
+                                  🟡 **MAJOR** - Should fix before merge (performance, best practices)
+                                  🔵 **MINOR** - Can fix after merge (style, documentation)
+                                  
+                                  ## ACTIONABLE SOLUTIONS:
+                                  [Specific code fixes and improvements]
+                                  
+                                  EVALUATION CRITERIA:
+                                  - **PASS**: No critical issues, acceptable quality for production
+                                  - **FAIL**: Has critical security/functionality/breaking change issues
+                                  
+                                  Focus on production readiness and code quality standards.`;
 
     return await this.openaiClient.generateContent(prompt, systemInstruction);
   }
@@ -229,29 +252,55 @@ export class CodeReviewService {
 
                 ## Review Requirements:
 
-                **For NEW FILES - Perform complete analysis:**
-                1. Architecture and design patterns compliance
-                2. Code quality and adherence to best practices  
-                3. Security vulnerabilities and potential attack vectors
-                4. Performance implications and optimizations
-                5. Error handling and edge case coverage
-                6. Integration points with existing codebase
-                7. Documentation and maintainability
-                8. Testing strategy recommendations
+                **MANDATORY REVIEW CRITERIA (must evaluate for PASS/FAIL):**
 
-                **For MODIFIED FILES - Analyze changes thoroughly:**
-                1. Review each change in the diff carefully
-                2. Impact assessment on existing functionality
-                3. Breaking change identification and regression risks
-                4. Security implications of modifications
-                5. Performance impact analysis of the changes
-                6. Code style consistency with existing patterns
-                7. Logic correctness and error handling improvements
-                8. Test coverage needs for modified functionality
+                **🔴 CRITICAL (FAIL if found):**
+                1. **Security Vulnerabilities**: SQL injection, XSS, authentication bypass, data exposure
+                2. **Breaking Changes**: API changes, removed features, incompatible modifications
+                3. **Critical Bugs**: Null pointer exceptions, infinite loops, data corruption
+                4. **Production Blockers**: Missing error handling for critical paths, hardcoded secrets
 
-                **IMPORTANT:** Provide equal attention to both new and modified files. For modified files, focus on understanding what changed and why, then assess the impact and quality of those specific changes.
+                **🟡 MAJOR (should fix before merge):**
+                1. **Performance Issues**: N+1 queries, memory leaks, inefficient algorithms
+                2. **Code Quality**: Duplicated logic, poor abstraction, hard-to-maintain code
+                3. **Missing Tests**: No unit tests for business logic, missing integration tests
+                4. **Documentation**: Missing API docs, unclear complex logic
 
-                Please provide detailed analysis with specific line numbers and actionable feedback for both new files and modifications.`;
+                **🔵 MINOR (can fix after merge):**
+                1. **Code Style**: Formatting, naming conventions, minor refactoring
+                2. **Optimization**: Small performance improvements, better variable names
+                3. **Documentation**: Comments, README updates, inline documentation
+
+                **FOR NEW FILES - Complete analysis required:**
+                - Architecture compliance and design patterns
+                - Security vulnerability scan (authentication, authorization, input validation)
+                - Performance bottlenecks and resource usage
+                - Error handling completeness (try-catch, null checks, edge cases)
+                - Integration impact with existing systems
+                - Test coverage strategy and missing tests
+                - Documentation and maintainability assessment
+
+                **FOR MODIFIED FILES - Change-focused analysis:**
+                - Line-by-line diff review for logic correctness
+                - Breaking change detection (API changes, behavior changes)
+                - Regression risk assessment on existing functionality
+                - Security impact of each modification
+                - Performance implications of changes
+                - Backward compatibility verification
+                - Test update requirements for modified logic
+
+                **DECISION FRAMEWORK:**
+                - **PASS**: Zero critical issues, minor/major issues are acceptable for production
+                - **FAIL**: One or more critical issues that block safe deployment
+
+                **REQUIRED OUTPUT:**
+                1. Clear PASS/FAIL decision with reasoning
+                2. Categorized issues by severity (🔴🟡🔵)
+                3. Specific line numbers and code snippets for each issue
+                4. Actionable solutions with code examples where possible
+                5. Priority order for fixing issues
+
+                Provide detailed, actionable feedback that enables immediate issue resolution.`;
   }
 
   private saveRawReviewContent(
@@ -358,7 +407,7 @@ export class CodeReviewService {
   ): Promise<{ content: string; commentsAdded: number; preview: string }> {
     const fileType = getFileType(fileName);
 
-    const prompt = `As a senior developer, auto-comment all newly added or changed ${fileType} functions and modules in this code. Include inline suggestions where test coverage or docstrings are missing.
+    const prompt = `As a senior developer reviewer, analyze and enhance this ${fileType} code with strategic comments and improvement suggestions.
 
                       FILE: ${fileName}
                       TYPE: ${isNewFile ? "NEW FILE" : "MODIFIED FILE"}
@@ -380,37 +429,59 @@ export class CodeReviewService {
                           : ""
                       }
 
-                      SENIOR DEVELOPER INSTRUCTIONS:
-                      1. **Focus on NEW/CHANGED code only** - Don't comment unchanged code
-                      2. **Add strategic comments for**:
-                        - Complex business logic and algorithms
-                        - Non-obvious implementation decisions
-                        - Security considerations
-                        - Performance implications
-                        - Edge cases and error handling
-                        - Integration points and dependencies
+                      SENIOR REVIEWER GUIDELINES:
+                      
+                      **PRIORITY 1 - Critical Issues (Flag for Review)**:
+                      - Security vulnerabilities (input validation, authentication)
+                      - Performance bottlenecks (expensive operations, memory leaks)
+                      - Error handling gaps (uncaught exceptions, null checks)
+                      - Breaking changes or compatibility issues
+                      
+                      **PRIORITY 2 - Quality Improvements**:
+                      - Complex business logic explanations
+                      - Non-obvious implementation decisions
+                      - Integration points and dependencies
+                      - Code maintainability suggestions
+                      
+                      **PRIORITY 3 - Developer Guidance**:
+                      - Testing recommendations with specific test cases
+                      - Documentation gaps (JSDoc, function contracts)
+                      - Code style and best practice suggestions
+                      - Performance optimization opportunities
+                      
+                      **COMMENT TYPES TO ADD**:
+                      - \`// CRITICAL: [Security/Performance/Error issue]\`
+                      - \`// TODO: Add unit tests for [specific scenarios]\`
+                      - \`// REVIEW: Consider [alternative approach]\`
+                      - \`// DOCS: Add JSDoc/docstring explaining [purpose/params]\`
+                      - \`// PERF: Optimize [specific operation]\`
+                      - \`// SECURITY: Validate [input/authorization]\`
+                      
+                      **OUTPUT REQUIREMENTS**:
+                      1. Return the COMPLETE file with strategic comments added
+                      2. Focus on NEW/CHANGED code only
+                      3. Use appropriate syntax for ${fileType}
+                      4. Prioritize actionable, specific feedback
+                      5. Include line-specific improvement suggestions
+                      
+                      Make the code more maintainable and help junior developers understand complex logic.`;
 
-                      3. **Include inline suggestions where missing**:
-                        - "// TODO: Add unit tests for edge cases"
-                        - "// TODO: Add JSDoc/docstring for this function"
-                        - "// SUGGESTION: Consider error handling for..."
-                        - "// PERFORMANCE: Consider caching this expensive operation"
-                        - "// SECURITY: Validate input parameters"
+    const systemInstruction = `You are a senior software engineer and code reviewer with 15+ years of experience. Your role is to enhance code quality through strategic commenting and identification of improvement opportunities.
 
-                      4. **Comment style guidelines**:
-                        - Use appropriate syntax for ${fileType}
-                        - Focus on WHY, not WHAT
-                        - Be concise but informative
-                        - Add function/class documentation where missing
-                        - Suggest improvements and testing needs
+RESPONSE REQUIREMENTS:
+1. Return the COMPLETE file with added comments
+2. Focus on critical issues, quality improvements, and developer guidance
+3. Use appropriate comment syntax for the file type
+4. Prioritize actionable feedback over general observations
+5. Help junior developers understand complex logic and best practices
 
-                      5. **Quality standards**:
-                        - Don't over-comment obvious code
-                        - Explain complex algorithms step-by-step
-                        - Document API contracts and assumptions
-                        - Highlight potential issues or improvements`;
+EVALUATION PRIORITIES:
+- Security and performance issues (highest priority)
+- Code maintainability and best practices
+- Testing and documentation gaps
+- Developer learning opportunities
 
-    const systemInstruction = `You are a senior software engineer with 15+ years of experience in code review, documentation, and mentoring. Your role is to add meaningful, strategic comments that help junior developers understand complex code, improve code quality, and identify areas needing testing or documentation. Focus on code clarity, maintainability, and best practices.`;
+Provide meaningful, strategic comments that improve code quality and team knowledge transfer.`;
 
     try {
       const response = await this.openaiClient.generateContent(
@@ -433,6 +504,79 @@ export class CodeReviewService {
       content: fileContent,
       commentsAdded: 0,
       preview: `Could not generate comments for ${fileName}`,
+    };
+  }
+
+  private parseReviewContent(content: string): {
+    decision: "PASS" | "FAIL";
+    criticalIssues: string[];
+    majorIssues: string[];
+    minorIssues: string[];
+    summary: string;
+    rawContent: string;
+  } {
+    const lines = content.split("\n");
+    let decision: "PASS" | "FAIL" = "PASS";
+    const criticalIssues: string[] = [];
+    const majorIssues: string[] = [];
+    const minorIssues: string[] = [];
+    let summary = "";
+
+    // Extract decision
+    const decisionMatch = content.match(/## REVIEW DECISION:\s*(PASS|FAIL)/i);
+    if (decisionMatch) {
+      decision = decisionMatch[1].toUpperCase() as "PASS" | "FAIL";
+    }
+
+    // Extract critical issues
+    const criticalSection = content.match(
+      /## CRITICAL ISSUES[^#]*:(.*?)(?=##|$)/s
+    );
+    if (criticalSection) {
+      const issues = criticalSection[1].match(/- (.+)/g);
+      if (issues) {
+        criticalIssues.push(...issues.map((issue) => issue.substring(2)));
+      }
+    }
+
+    // Extract issues by severity markers
+    const criticalMatches = content.match(/🔴[^🟡🔵]*?([^\n]+)/g);
+    const majorMatches = content.match(/🟡[^🔴🔵]*?([^\n]+)/g);
+    const minorMatches = content.match(/🔵[^🔴🟡]*?([^\n]+)/g);
+
+    if (criticalMatches) {
+      criticalIssues.push(
+        ...criticalMatches.map((match) =>
+          match.replace(/🔴\s*\*?\*?/, "").trim()
+        )
+      );
+    }
+    if (majorMatches) {
+      majorIssues.push(
+        ...majorMatches.map((match) => match.replace(/🟡\s*\*?\*?/, "").trim())
+      );
+    }
+    if (minorMatches) {
+      minorIssues.push(
+        ...minorMatches.map((match) => match.replace(/🔵\s*\*?\*?/, "").trim())
+      );
+    }
+
+    // If we have critical issues, it should be FAIL
+    if (criticalIssues.length > 0 && decision === "PASS") {
+      decision = "FAIL";
+    }
+
+    // Generate summary
+    summary = `${decision}: ${criticalIssues.length} critical, ${majorIssues.length} major, ${minorIssues.length} minor issues found`;
+
+    return {
+      decision,
+      criticalIssues: [...new Set(criticalIssues)], // Remove duplicates
+      majorIssues: [...new Set(majorIssues)],
+      minorIssues: [...new Set(minorIssues)],
+      summary,
+      rawContent: content,
     };
   }
 }
