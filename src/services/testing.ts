@@ -18,7 +18,8 @@ export class TestingService {
   private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.openaiClient = new OpenAIClient(configPath);
+    // Don't pass configPath to use the improved steelheart config system
+    this.openaiClient = new OpenAIClient();
   }
 
   // Part 1: Check if the source has set up unit test, if not, set it up

@@ -38,9 +38,12 @@ export const setupCommand = new Command("setup")
 
       saveConfig({ ...config, ...answers });
       logSuccess("✅ Configuration saved successfully!");
+      console.log(`📁 Config saved to: ${process.cwd()}/.steelheart.json`);
+      console.log("🚀 You can now use: st auto-review, st docs, st test, etc.");
     } else {
       logSuccess(
         "✅ Configuration already exists. Use --interactive to reconfigure."
       );
+      console.log(`📁 Current config: ${process.cwd()}/.steelheart.json`);
     }
   });

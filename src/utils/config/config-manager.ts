@@ -26,13 +26,23 @@ export const saveConfig = (config: SteelheartConfig): void => {
 };
 
 export const validateApiKey = (): boolean => {
-  const apiKey = process.env.OPENAI_API_KEY || getConfig().apiKey;
+  const config = getConfig();
+  const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
+
   if (!apiKey) {
     console.log(chalk.red("❌ OpenAI API key not found!"));
     console.log(chalk.yellow("💡 Please run: st setup"));
+    console.log(
+      chalk.gray("   Or set the OPENAI_API_KEY environment variable")
+    );
     return false;
   }
   return true;
+};
+
+export const getApiKey = (): string | undefined => {
+  const config = getConfig();
+  return config.apiKey || process.env.OPENAI_API_KEY;
 };
 
 export const getOutputDir = (specified?: string): string => {

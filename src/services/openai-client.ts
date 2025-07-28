@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { readFileSync } from "fs";
 import { join } from "path";
 import * as dotenv from "dotenv";
+import { getConfig } from "../utils/config/config-manager";
 
 // Load environment variables
 dotenv.config({ path: join(process.cwd(), ".env") });
@@ -32,7 +33,7 @@ export class OpenAIClient {
   }
 
   private loadConfig(configPath?: string): OpenAIConfig {
-    // Try to load from config file first, then fall back to env variables
+    // Try to load from config file first, then fall back to steelheart config, then env variables
     let config: OpenAIConfig;
 
     if (configPath) {
@@ -41,7 +42,7 @@ export class OpenAIClient {
         const fileConfig = JSON.parse(configFile);
         config = {
           apiKey: fileConfig.apiKey || process.env.OPENAI_API_KEY,
-          model: fileConfig.model || "gpt-4o-mini",
+          model: fileConfig.model || fileConfig.defaultModel || "gpt-4o-mini",
           fallbackModel: fileConfig.fallbackModel || "gpt-3.5-turbo",
           temperature: fileConfig.temperature || 0.7,
           maxTokens: fileConfig.maxTokens || 4000,
@@ -50,20 +51,36 @@ export class OpenAIClient {
           baseURL: fileConfig.baseURL || process.env.OPENAI_BASE_URL,
         };
       } catch (error) {
-        console.warn("Could not load config file, using environment variables");
-        config = this.getDefaultConfig();
+        console.warn("Could not load config file, using steelheart config");
+        config = this.getSteelheartConfig();
       }
     } else {
-      config = this.getDefaultConfig();
+      config = this.getSteelheartConfig();
     }
 
     if (!config.apiKey) {
       throw new Error(
-        "OPENAI_API_KEY environment variable is required. Get your API key from https://platform.openai.com/api-keys"
+        "OpenAI API key not found! Please run 'st setup' to configure your API key, or set the OPENAI_API_KEY environment variable."
       );
     }
 
     return config;
+  }
+
+  private getSteelheartConfig(): OpenAIConfig {
+    // Get configuration from steelheart config first, then fall back to env variables
+    const steelheartConfig = getConfig();
+
+    return {
+      apiKey: steelheartConfig.apiKey || process.env.OPENAI_API_KEY || "",
+      model: steelheartConfig.defaultModel || "gpt-4o-mini",
+      fallbackModel: "gpt-3.5-turbo",
+      temperature: 0.7,
+      maxTokens: 4000,
+      maxRetries: 3,
+      organization: process.env.OPENAI_ORG_ID,
+      baseURL: process.env.OPENAI_BASE_URL,
+    };
   }
 
   private getDefaultConfig(): OpenAIConfig {

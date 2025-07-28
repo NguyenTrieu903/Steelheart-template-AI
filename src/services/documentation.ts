@@ -12,7 +12,8 @@ export class DocumentationService {
   private openaiClient: OpenAIClient;
 
   constructor(configPath?: string) {
-    this.openaiClient = new OpenAIClient(configPath);
+    // Don't pass configPath to use the improved steelheart config system
+    this.openaiClient = new OpenAIClient();
   }
 
   async generateDocumentation(
