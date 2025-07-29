@@ -350,7 +350,7 @@ The template automatically detects and works with:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Steelheart team. 
 
 ## Troubleshooting
 
