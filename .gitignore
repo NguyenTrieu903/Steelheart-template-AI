@@ -6,6 +6,9 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
+# Steelheart AI Configuration (contains API keys)
+.steelheart.json
+
 # Runtime data
 pids
 *.pid

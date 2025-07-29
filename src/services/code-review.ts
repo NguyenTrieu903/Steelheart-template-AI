@@ -121,8 +121,14 @@ export class CodeReviewService {
                                   RESPONSE FORMAT REQUIRED:
                                   ## REVIEW DECISION: [PASS/FAIL]
                                   
-                                  ## CRITICAL ISSUES (if any):
-                                  - [List blocking issues that cause FAIL]
+                                  ## CRITICAL ISSUES:
+                                  🔴 **CRITICAL** - [If any critical issues exist, list them here. If none, write "None."]
+                                  
+                                  ## MAJOR ISSUES:
+                                  🟡 **MAJOR** - [If any major issues exist, list them here. If none, write "None."]
+                                  
+                                  ## MINOR ISSUES:
+                                  🔵 **MINOR** - [If any minor issues exist, list them here. If none, write "None."]
                                   
                                   ## DETAILED ANALYSIS:
                                   
@@ -132,17 +138,17 @@ export class CodeReviewService {
                                   ### MODIFIED FILES:
                                   [Focused review on changes and their impact]
                                   
-                                  ## SEVERITY LEVELS:
-                                  🔴 **CRITICAL** - Blocks merge (security, breaking changes, critical bugs)
-                                  🟡 **MAJOR** - Should fix before merge (performance, best practices)
-                                  🔵 **MINOR** - Can fix after merge (style, documentation)
-                                  
                                   ## ACTIONABLE SOLUTIONS:
                                   [Specific code fixes and improvements]
                                   
                                   EVALUATION CRITERIA:
                                   - **PASS**: No critical issues, acceptable quality for production
                                   - **FAIL**: Has critical security/functionality/breaking change issues
+                                  
+                                  IMPORTANT: 
+                                  - If there are NO issues in a category, write "None." 
+                                  - Only list ACTUAL issues found, not category descriptions
+                                  - Be specific with file names and line numbers when possible
                                   
                                   Focus on production readiness and code quality standards.`;
 
@@ -516,55 +522,100 @@ Provide meaningful, strategic comments that improve code quality and team knowle
     summary: string;
     rawContent: string;
   } {
-    const lines = content.split("\n");
     let decision: "PASS" | "FAIL" = "PASS";
     const criticalIssues: string[] = [];
     const majorIssues: string[] = [];
     const minorIssues: string[] = [];
     let summary = "";
 
-    // Extract decision
-    const decisionMatch = content.match(/## REVIEW DECISION:\s*(PASS|FAIL)/i);
+    // Extract decision - look for both formats
+    const decisionMatch =
+      content.match(/## REVIEW DECISION:\s*(PASS|FAIL)/i) ||
+      content.match(/Decision:\s*(PASS|FAIL)/i);
     if (decisionMatch) {
       decision = decisionMatch[1].toUpperCase() as "PASS" | "FAIL";
     }
 
-    // Extract critical issues
+    // Extract critical issues - look for actual issue content, not headers
     const criticalSection = content.match(
-      /## CRITICAL ISSUES[^#]*:(.*?)(?=##|$)/s
+      /🔴.*?Critical.*?Issues.*?\n(.*?)(?=🟡|🔵|##|$)/s
     );
     if (criticalSection) {
-      const issues = criticalSection[1].match(/- (.+)/g);
-      if (issues) {
-        criticalIssues.push(...issues.map((issue) => issue.substring(2)));
+      const issueText = criticalSection[1];
+      // Only extract if there's actual content (not just "None" or empty)
+      if (
+        issueText &&
+        !issueText.match(/^\s*(None|No critical issues)\s*\.?\s*$/i)
+      ) {
+        const issues = issueText.match(/(?:^|\n)\s*[-*]\s*(.+)/g);
+        if (issues) {
+          issues.forEach((issue) => {
+            const cleanIssue = issue.replace(/^[\n\s]*[-*]\s*/, "").trim();
+            if (
+              cleanIssue &&
+              !cleanIssue.match(/^(Location:|Details:|Actionable Solution:)/i)
+            ) {
+              criticalIssues.push(cleanIssue);
+            }
+          });
+        }
       }
     }
 
-    // Extract issues by severity markers
-    const criticalMatches = content.match(/🔴[^🟡🔵]*?([^\n]+)/g);
-    const majorMatches = content.match(/🟡[^🔴🔵]*?([^\n]+)/g);
-    const minorMatches = content.match(/🔵[^🔴🟡]*?([^\n]+)/g);
+    // Extract major issues
+    const majorSection = content.match(
+      /.*?Major.*?Issues.*?\n(.*?)(?=🔴|🔵|##|$)/s
+    );
+    if (majorSection) {
+      const issueText = majorSection[1];
+      if (
+        issueText &&
+        !issueText.match(/^\s*(None|No major issues)\s*\.?\s*$/i)
+      ) {
+        // Look for actual issue titles, not just any bullet point
+        const issueBlocks = issueText.split(/\n(?=\w)/); // Split on lines that start with a word
+        issueBlocks.forEach((block) => {
+          const firstLine = block.split("\n")[0].trim();
+          if (
+            firstLine &&
+            !firstLine.match(/^(Location:|Details:|Actionable Solution:)/i) &&
+            !firstLine.includes("fix before merge") &&
+            firstLine.length > 10
+          ) {
+            // Avoid short generic text
+            majorIssues.push(firstLine);
+          }
+        });
+      }
+    }
 
-    if (criticalMatches) {
-      criticalIssues.push(
-        ...criticalMatches.map((match) =>
-          match.replace(/🔴\s*\*?\*?/, "").trim()
-        )
-      );
-    }
-    if (majorMatches) {
-      majorIssues.push(
-        ...majorMatches.map((match) => match.replace(/🟡\s*\*?\*?/, "").trim())
-      );
-    }
-    if (minorMatches) {
-      minorIssues.push(
-        ...minorMatches.map((match) => match.replace(/🔵\s*\*?\*?/, "").trim())
-      );
+    // Extract minor issues
+    const minorSection = content.match(
+      /🔵.*?Minor.*?Issues.*?\n(.*?)(?=🔴|🟡|##|$)/s
+    );
+    if (minorSection) {
+      const issueText = minorSection[1];
+      if (
+        issueText &&
+        !issueText.match(/^\s*(None|No minor issues)\s*\.?\s*$/i)
+      ) {
+        const issueBlocks = issueText.split(/\n(?=\w)/);
+        issueBlocks.forEach((block) => {
+          const firstLine = block.split("\n")[0].trim();
+          if (
+            firstLine &&
+            !firstLine.match(/^(Location:|Details:|Actionable Solution:)/i) &&
+            !firstLine.includes("fix after merge") &&
+            firstLine.length > 10
+          ) {
+            minorIssues.push(firstLine);
+          }
+        });
+      }
     }
 
     // If we have critical issues, it should be FAIL
-    if (criticalIssues.length > 0 && decision === "PASS") {
+    if (criticalIssues.length > 0) {
       decision = "FAIL";
     }
 

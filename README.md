@@ -44,7 +44,6 @@ Optimized for developers with budget constraints:
 - 📖 **Documentation Generation**: Auto-generate comprehensive docs
 - 🧪 **Test Generation**: Create unit and integration tests
 - 🌿 **Git Integration**: Branch-aware analysis and reporting
-- 🎯 **Project Detection**: Auto-detect project type (Node.js, Python, Rust, Go, etc.)
 - 📦 **CLI & Library**: Use as command-line tool or integrate into your workflow
 - 📋 **Branch Documentation**: Generate docs for specific branch changes
 - 💬 **Auto-Comment**: Add AI-generated comments to your code
@@ -123,7 +122,6 @@ steelheart auto-review
 # 🚀 Steelheart AI - AI-powered development toolkit
 #
 # 🤖 Auto-Review Mode
-# 📂 Project Type: Node.js/JavaScript
 # 🌿 Current Branch: feature/new-feature
 # 📝 Modified Files (3):
 #    • src/components/Button.tsx
@@ -132,7 +130,6 @@ steelheart auto-review
 #
 # 🤖 Smart Review Results:
 # Branch: feature/new-feature
-# Project Type: Node.js/JavaScript
 # Total Issues: 2
 # Critical: 0
 # Warnings: 2

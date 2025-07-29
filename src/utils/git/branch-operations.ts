@@ -12,7 +12,11 @@ export const getBranchChanges = async (
     const git = simpleGit(repoPath);
     const currentBranch = await git.revparse(["--abbrev-ref", "HEAD"]);
 
+    // Enhanced CI/CD environment detection and handling
     let actualBaseBranch = baseBranch;
+    let fallbackStrategy = false;
+
+    // Try to find a valid base branch reference
     try {
       await git.revparse([`--verify`, `${baseBranch}`]);
     } catch {
@@ -28,26 +32,132 @@ export const getBranchChanges = async (
             await git.revparse([`--verify`, `master`]);
             actualBaseBranch = `master`;
           } catch {
-            actualBaseBranch = `HEAD~1`;
+            // Check if we have at least one commit before using HEAD~1
+            try {
+              const log = await git.log({ maxCount: 2 });
+              if (log.total >= 2) {
+                actualBaseBranch = `HEAD~1`;
+              } else {
+                // Fallback for single commit or fresh repository
+                console.log(
+                  "⚠️  Repository has limited history. Using alternative analysis method."
+                );
+                fallbackStrategy = true;
+              }
+            } catch {
+              fallbackStrategy = true;
+            }
           }
         }
       }
     }
 
+    // If we're on the base branch, compare with previous commit if available
     if (
       currentBranch.trim() === baseBranch ||
       currentBranch.trim() === actualBaseBranch.replace("origin/", "")
     ) {
-      actualBaseBranch = `HEAD~1`;
+      try {
+        const log = await git.log({ maxCount: 2 });
+        if (log.total >= 2) {
+          actualBaseBranch = `HEAD~1`;
+        } else {
+          fallbackStrategy = true;
+        }
+      } catch {
+        fallbackStrategy = true;
+      }
     }
 
-    const commits = await git.log([
-      `${actualBaseBranch}..${currentBranch.trim()}`,
-    ]);
-
-    let diffSummary, diffContent;
+    let commits, diffSummary, diffContent;
     let newFiles: string[] = [];
     let modifiedFiles: string[] = [];
+
+    if (fallbackStrategy) {
+      // Fallback strategy for CI/CD or fresh repositories
+      console.log(
+        "🔄 Using fallback analysis for repository with limited history..."
+      );
+
+      // Get all files in working directory as "new" files for analysis
+      const allFiles = await git
+        .raw(["ls-files"])
+        .then((output) =>
+          output
+            .trim()
+            .split("\n")
+            .filter((f) => f.trim())
+        )
+        .catch(() => []);
+
+      // Check git status for any changes
+      const status = await git.status();
+
+      newFiles = allFiles.slice(0, 50); // Limit to first 50 files to avoid overwhelming analysis
+      modifiedFiles = [...status.modified, ...status.staged].slice(0, 20);
+
+      // Create mock diff summary for analysis
+      diffSummary = {
+        changed: newFiles.length + modifiedFiles.length,
+        insertions: 0,
+        deletions: 0,
+        files: [
+          ...newFiles.map((f) => ({
+            file: f,
+            insertions: 0,
+            deletions: 0,
+            binary: false,
+            isNew: true,
+          })),
+          ...modifiedFiles.map((f) => ({
+            file: f,
+            insertions: 0,
+            deletions: 0,
+            binary: false,
+            isNew: false,
+          })),
+        ],
+      };
+
+      commits = { all: [] }; // No commit comparison in fallback mode
+      diffContent =
+        "Fallback mode: Repository analysis without git diff comparison";
+    } else {
+      // Normal git diff analysis
+      commits = await git.log([`${actualBaseBranch}..${currentBranch.trim()}`]);
+
+      diffSummary = await git.diffSummary([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
+
+      newFiles = await git
+        .raw([
+          "diff",
+          "--name-only",
+          "--diff-filter=A",
+          `${actualBaseBranch}...${currentBranch.trim()}`,
+        ])
+        .then((output) =>
+          output
+            .trim()
+            .split("\n")
+            .filter((f) => f)
+        );
+
+      modifiedFiles = diffSummary.files
+        .map((f) => f.file)
+        .filter((f) => !newFiles.includes(f));
+
+      // Add isNew flag to file objects
+      diffSummary.files = diffSummary.files.map((file) => ({
+        ...file,
+        isNew: newFiles.includes(file.file),
+      }));
+
+      diffContent = await git.diff([
+        `${actualBaseBranch}...${currentBranch.trim()}`,
+      ]);
+    }
 
     if (includeUncommitted) {
       // Include working directory changes

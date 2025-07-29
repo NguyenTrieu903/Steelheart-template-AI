@@ -1,4 +1,5 @@
 import { RepositoryAnalysis } from "../types";
+import { BranchChanges } from "../types/cli";
 import { getBranchChanges } from "../utils";
 import { extractCodeFromResponse, getFileType } from "../utils/code-extraction";
 import { analyzeRepository } from "../utils/repository-analyzer";
@@ -44,21 +45,28 @@ export class TestingService {
           packageJson.scripts &&
           (packageJson.scripts.test ||
             packageJson.scripts["test:unit"] ||
-            packageJson.scripts.jest);
+            packageJson.scripts["test:ci"] ||
+            packageJson.scripts["test:watch"] ||
+            packageJson.scripts["test:coverage"] ||
+            packageJson.scripts.jest ||
+            packageJson.scripts.vitest ||
+            packageJson.scripts.mocha);
 
         const hasTestDeps =
           (packageJson.devDependencies &&
             (packageJson.devDependencies.jest ||
               packageJson.devDependencies.mocha ||
               packageJson.devDependencies.vitest ||
+              packageJson.devDependencies["@types/jest"] ||
+              packageJson.devDependencies["ts-jest"] ||
               packageJson.devDependencies["@testing-library/jest-dom"])) ||
           (packageJson.dependencies &&
             (packageJson.dependencies.jest ||
               packageJson.dependencies.mocha ||
               packageJson.dependencies.vitest));
 
-        hasTestSetup = hasTestScript && hasTestDeps;
-
+        hasTestSetup = hasTestScript;
+        console.log(`📦 Test setup found: ${hasTestSetup}`);
         if (hasTestSetup) {
           console.log("✅ Test infrastructure already configured");
           // Determine test directory based on existing setup
@@ -354,6 +362,7 @@ describe('Sample Test Suite', () => {
     const fileDiff = fileInfo.diff || "";
 
     const testContent = await this.generateTestContent(
+      branchChanges,
       fileInfo.file,
       fileContent,
       fileDiff,
@@ -457,6 +466,7 @@ describe('Sample Test Suite', () => {
   }
 
   private async generateTestContent(
+    branchChanges: BranchChanges,
     fileName: string,
     fileContent: string,
     fileDiff: string,
@@ -465,43 +475,128 @@ describe('Sample Test Suite', () => {
     const fileType = getFileType(fileName);
     const testFramework = "Jest";
 
-    const prompt = `Generate comprehensive ${testFramework} unit tests for the ${fileType} file: ${fileName}
-
-                          FILE CONTENT:
-                          \`\`\`${fileType.toLowerCase()}
-                          ${fileContent}
-                          \`\`\`
-
-                          ${
-                            isNewFile
-                              ? "This is a NEW file"
-                              : "CHANGES MADE (Git Diff):"
-                          }
-                          ${
-                            isNewFile
-                              ? "Generate tests for all functions, classes, and methods in this file."
-                              : `\`\`\`diff\n${fileDiff}\n\`\`\``
-                          }
-
-                          Requirements:
-                          1. Generate tests ONLY for the ${
-                            isNewFile
-                              ? "functions, classes, and methods"
-                              : "added or modified code shown in the diff"
-                          }
-                          2. Use ${testFramework} testing framework with describe, test/it, and expect assertions
-                          3. Include edge cases and error scenarios
-                          4. Mock external dependencies appropriately
-                          5. Follow ${fileType} best practices
-                          6. Ensure tests are syntactically correct and runnable
-                          7. Add descriptive test names and comments
-                          8. Test both success and failure cases where applicable
-
-                          Generate a complete test file that can be saved as ${fileName.replace(
-                            /\.(js|ts|jsx|tsx)$/,
-                            ".test.$1"
-                          )}`;
+    const prompt = this.buildComprehensiveTestPrompt(
+      testFramework,
+      fileName,
+      fileContent,
+      fileDiff,
+      isNewFile,
+      branchChanges,
+      fileType
+    );
 
     return await this.openaiClient.generateContent(prompt);
+  }
+
+  private buildComprehensiveTestPrompt(
+    testFramework: string,
+    fileName: string,
+    fileContent: string,
+    fileDiff: string,
+    isNewFile: boolean,
+    branchChanges: BranchChanges,
+    fileType: string
+  ): string {
+    const changeType = isNewFile ? "NEW FILE" : "MODIFIED FILE";
+
+    return `You are a senior software engineer writing comprehensive ${testFramework} unit tests. Generate high-quality, production-ready tests for the following code changes.
+
+## CONTEXT
+- **File**: ${fileName}
+- **Type**: ${changeType}
+- **Language**: ${fileType}
+- **Branch**: ${branchChanges.currentBranch}
+- **Test Framework**: ${testFramework}
+
+## SOURCE CODE
+\`\`\`${fileType}
+${fileContent}
+\`\`\`
+
+${
+  fileDiff
+    ? `## CODE CHANGES (DIFF)
+\`\`\`diff
+${fileDiff}
+\`\`\`
+
+**FOCUS**: Generate tests specifically for the changed/added code shown in the diff above.`
+    : ""
+}
+
+## TEST REQUIREMENTS
+
+### 🎯 **Test Coverage Goals**
+- **Functions/Methods**: Test all public functions, methods, and exported utilities
+- **Edge Cases**: Handle null, undefined, empty inputs, boundary conditions
+- **Error Handling**: Test error scenarios, exception throwing, validation failures
+- **Business Logic**: Verify core functionality and expected behaviors
+- **Integration Points**: Test interactions with external dependencies
+
+### 📋 **Test Structure Requirements**
+- Use descriptive test names that explain what is being tested
+- Group related tests in \`describe\` blocks by functionality
+- Include setup/teardown with \`beforeEach\`/\`afterEach\` if needed
+- Mock external dependencies and API calls
+- Use proper assertions with clear error messages
+
+### 🔧 **Code Quality Standards**
+- Follow ${testFramework} best practices and conventions
+- Use TypeScript types for test parameters and return values
+- Include JSDoc comments for complex test scenarios
+- Test both success and failure paths
+- Verify return values, side effects, and state changes
+
+### 📝 **Test Categories to Include**
+1. **Unit Tests**: Individual function/method testing
+2. **Integration Tests**: Component interaction testing
+3. **Edge Case Tests**: Boundary conditions and error scenarios
+4. **Performance Tests**: For critical algorithms (if applicable)
+5. **Validation Tests**: Input validation and sanitization
+
+### 🚀 **Advanced Testing Patterns**
+- **Parameterized Tests**: Use \`test.each\` for multiple input scenarios
+- **Async Testing**: Proper async/await and Promise handling
+- **Mock Testing**: Mock external APIs, databases, file system
+- **Spy Testing**: Verify function calls and parameters
+- **Snapshot Testing**: For UI components or data structures
+
+## OUTPUT FORMAT
+Generate clean, well-organized ${testFramework} test code with:
+- Clear imports and dependencies
+- Properly structured describe/test blocks
+- Comprehensive test scenarios covering all requirements above
+- Inline comments explaining complex test logic
+- TypeScript types where applicable
+
+## EXAMPLE STRUCTURE
+\`\`\`typescript
+import { functionToTest } from '../${fileName.replace(/\.(ts|js)$/, "")}';
+
+describe('${fileName} Tests', () => {
+  beforeEach(() => {
+    // Setup code
+  });
+
+  describe('functionName', () => {
+    test('should handle valid input correctly', () => {
+      // Test implementation
+    });
+
+    test('should throw error for invalid input', () => {
+      // Error testing
+    });
+
+    test.each([
+      [input1, expected1],
+      [input2, expected2],
+    ])('should return %s for input %s', (input, expected) => {
+      // Parameterized testing
+    });
+  });
+});
+\`\`\`
+
+Generate comprehensive tests that a senior developer would be proud to review and merge into production.`;
   }
 }

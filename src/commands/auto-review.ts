@@ -78,7 +78,6 @@ export const autoReviewCommand = new Command("auto-review")
 
       spinner.text = `Smart review on ${gitInfo.currentBranch} branch...`;
       logInfo(`\n🤖 Auto-Review Mode`);
-      logInfo(`📂 Project Type: ${projectType}`);
       logInfo(`🌿 Current Branch: ${gitInfo.currentBranch}`);
 
       // Use enhanced branch analysis to detect changes (including local files)
@@ -93,11 +92,21 @@ export const autoReviewCommand = new Command("auto-review")
         logWarning(`❌ Could not analyze Git changes. This might happen if:`);
         logWarning(`   • Base branch '${options.base}' doesn't exist`);
         logWarning(`   • No commits found to compare`);
-        logWarning(`   • Repository has no commit history`);
-        logWarning(`\n💡 Try:`);
-        logWarning(`   • steelheart auto-review --base master`);
-        logWarning(`   • steelheart auto-review --base origin/main`);
-        logWarning(`   • steelheart auto-review --include-local`);
+        logWarning(`   • Repository has no commit history (common in CI/CD)`);
+        logWarning(`   • Fresh repository without sufficient git history`);
+
+        logWarning(`\n💡 Solutions for CI/CD environments:`);
+        logWarning(
+          `   • Add to GitHub Actions: fetch-depth: 0 (for full history)`
+        );
+        logWarning(`   • Try: steelheart auto-review --include-local`);
+        logWarning(`   • Try: steelheart auto-review --base master`);
+        logWarning(`   • Try: steelheart auto-review --base origin/main`);
+
+        logWarning(`\n🛠️  For GitHub Actions, use this checkout step:`);
+        logWarning(`     - uses: actions/checkout@v4`);
+        logWarning(`       with:`);
+        logWarning(`         fetch-depth: 0  # Fetch full history`);
         return;
       }
 
@@ -182,7 +191,6 @@ export const autoReviewCommand = new Command("auto-review")
       logInfo("📄 Detailed Analysis:");
       logGray(`Branch: ${gitInfo.currentBranch}`);
       logGray(`Base: ${branchChanges.baseBranch}`);
-      logGray(`Project Type: ${projectType}`);
       logGray(`Files Reviewed: ${branchChanges.changedFiles.length}`);
       logGray(`New Files: ${branchChanges.newFiles.length}`);
       logGray(`Modified Files: ${branchChanges.modifiedFiles.length}`);
