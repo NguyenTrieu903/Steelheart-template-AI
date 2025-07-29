@@ -17,7 +17,7 @@ steelheart setup
 cd /path/to/your/project
 steelheart auto-review
 ```
-
+See details [setup](OPENAI-SETUP.md)
 ### Local Installation (For library usage)
 
 ```bash
