@@ -316,62 +316,7 @@ import { analyzeRepository } from 'gemini-ai-template';
 ```
 
 ### Method 3: CI/CD Integration
-
-Add to your GitHub Actions workflow:
-
-```yaml
-name: AI Code Analysis
-on: [push, pull_request]
-
-jobs:
-  analyze:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
-
-      - name: Run AI Analysis
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          npx gemini-ai-template all ./
-
-      - name: Upload Reports
-        uses: actions/upload-artifact@v3
-        with:
-          name: ai-analysis-reports
-          path: output/
-```
-
-## Examples
-
-### Code Review Example
-
-```typescript
-import { CodeReviewService } from "./src/services/code-review";
-
-const service = new CodeReviewService();
-const report = await service.performCodeReview("./my-project", "./reports");
-
-console.log(`Found ${report.issues.length} issues:`);
-console.log(`- Critical: ${report.criticalIssues}`);
-console.log(`- Warnings: ${report.warningIssues}`);
-console.log(`- Suggestions: ${report.suggestions.length}`);
-```
-
-### Documentation Example
-
-```typescript
-import { DocumentationService } from "./src/services/documentation";
-
-const service = new DocumentationService();
-const docs = await service.generateDocumentation("./my-project", "./docs");
-
-console.log(`Generated ${docs.sections.length} documentation sections`);
-```
+See at [**CI/CD Integration**](GITHUB-ACTIONS-GUIDE.md).
 
 ## Supported Technologies
 
