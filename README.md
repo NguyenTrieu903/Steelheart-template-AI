@@ -17,7 +17,9 @@ steelheart setup
 cd /path/to/your/project
 steelheart auto-review
 ```
+
 See details [setup](OPENAI-SETUP.md)
+
 ### Local Installation (For library usage)
 
 ```bash
@@ -39,43 +41,44 @@ Optimized for developers with budget constraints:
 
 ## 📋 Features
 
-- 🔍 **Smart Auto-Review**: Automatically analyze your current Git branch
-- 📝 **AI Code Review**: Deep analysis for bugs, security, performance
-- 📖 **Documentation Generation**: Auto-generate comprehensive docs
-- 🧪 **Test Generation**: Create unit and integration tests
+- 🔍 **Smart Auto-Review**: Automatically analyze your current Git branch changes
+- 📝 **AI Code Review**: Deep analysis for bugs, security, and performance
+- 📖 **Documentation Generation**: Auto-generate comprehensive project docs
+- 🧪 **Test Generation**: Create unit, integration, and e2e tests with framework setup
 - 🌿 **Git Integration**: Branch-aware analysis and reporting
 - 📦 **CLI & Library**: Use as command-line tool or integrate into your workflow
-- 📋 **Branch Documentation**: Generate docs for specific branch changes
-- 💬 **Auto-Comment**: Add AI-generated comments to your code
+- 📋 **Branch Documentation**: Generate docs specifically for branch changes
+- ⚙️ **Configuration Management**: Easy setup and configuration management
+- 🔧 **Project Analysis**: Comprehensive project structure and complexity analysis
 
 ## 🎯 Usage Examples
 
 ### CLI Usage (After Global Installation)
 
 ```bash
-# Quick auto-review of current project
+# Setup your API key and configuration
+steelheart setup
+
+# Quick auto-review of current project changes
 steelheart auto-review
 
-# Full code review
-steelheart review
 
 # Generate documentation for branch changes
 steelheart branch-docs
 
-# Auto-add comments to code
-steelheart auto-comment
-
-# Generate documentation
-steelheart docs
-
-# Generate tests
+# Generate tests for your project
 steelheart gen-tests
 
-# Complete analysis (review + docs + tests)
+# Complete project analysis (structure and complexity)
 steelheart analyze
+
+# Manage configuration
+steelheart config --show
 
 # Show help
 steelheart --help
+# Or use the shorter alias:
+st --help
 ```
 
 ### Library Usage (Programmatic)
@@ -139,7 +142,7 @@ steelheart auto-review
 # 💡 Some improvements suggested. Consider reviewing.
 ```
 
-### Advanced Features - Branch Documentation & Auto-Comments
+### Advanced Features - Branch Documentation
 
 ```bash
 # Navigate to any project with Git branches
@@ -164,57 +167,18 @@ steelheart branch-docs
 # Files changed: 6
 # Documentation saved to: ./steelheart-output/branch-feature-authentication-docs.md
 
-# Auto-add intelligent comments to your code
-steelheart auto-comment --dry-run
-
-# Output shows what comments would be added:
-# 💬 Auto-Comment Generator
-# 🌿 Current Branch: feature/authentication
-# 📝 Files to process: 4
-#
-# 📝 Comments for src/components/LoginForm.tsx:
-# Would add comments explaining authentication logic, form validation, and error handling
-#
-# 📝 Comments for src/hooks/useAuth.ts:
-# Would add comments explaining custom hook logic, state management, and API calls
-#
-# 🔍 This was a dry run. Use without --dry-run to apply changes.
-
-# Actually apply the comments (with backup)
-steelheart auto-comment --backup
+# Generate tests for your project
+steelheart gen-tests
 
 # Output:
-# 💾 Backup saved: src/components/LoginForm.tsx.backup
-# ✅ Comments added to: src/components/LoginForm.tsx
-# 💾 Backup saved: src/hooks/useAuth.ts.backup
-# ✅ Comments added to: src/hooks/useAuth.ts
+# 🧪 AI Test Generator
+# 📁 Project Path: ~/my-react-project
+# � Framework: jest (auto-detected)
+# 📝 Files to test: 12
 #
-# 💬 Auto-Comment Summary:
-# Files processed: 4/4
-# Comments added: 23
-```
-
-## Template Structure
-
-```
-gemini-ai-template/
-├── src/
-│   ├── services/           # Core AI services
-│   │   ├── openai-client.ts    # OpenAI API client
-│   │   ├── code-review.ts      # Code review service
-│   │   ├── documentation.ts    # Documentation generation
-│   │   └── testing.ts          # Test generation
-│   ├── utils/              # Utility functions
-│   │   └── repository-analyzer.ts
-│   ├── types/              # TypeScript definitions
-│   │   └── index.ts
-│   ├── cli.ts              # Command-line interface
-│   └── index.ts            # Main exports
-├── config/
-│   └── openai-config.json  # Configuration template
-├── package.json
-├── tsconfig.json
-└── README.md
+# ✅ Test generation complete!
+# Tests saved to: ./tests/
+# Coverage setup: included
 ```
 
 ## Services Overview
@@ -223,13 +187,15 @@ gemini-ai-template/
 
 Analyzes your codebase and provides:
 
+- **Branch-Aware Analysis**: Intelligent review of changed files and git diffs
 - **Bug Detection**: Identifies potential bugs and logic errors
 - **Security Analysis**: Spots security vulnerabilities
 - **Performance Issues**: Finds performance bottlenecks
 - **Code Quality**: Checks adherence to best practices
-- **Suggestions**: Provides actionable improvement recommendations
+- **Auto-Commenting**: Optional intelligent code commenting for enhanced readability
+- **Decision Making**: PASS/FAIL recommendations with categorized issues
 
-**Output**: JSON and Markdown reports with categorized issues and suggestions.
+**Output**: Structured JSON reports and markdown summaries with categorized issues.
 
 ### Documentation Service
 
@@ -239,21 +205,21 @@ Generates comprehensive documentation:
 - **Installation Guide**: Setup and dependency instructions
 - **Usage Examples**: Code examples and tutorials
 - **API Documentation**: Function and class documentation
-- **Configuration**: Environment and config documentation
+- **Branch Documentation**: Generate docs specifically for branch changes
+- **Multiple Formats**: Supports markdown
 
-**Output**: README.md, full documentation.md, and structured JSON.
+**Output**: README.md, documentation.md, and structured project documentation.
 
 ### Testing Service
 
-Creates test suites:
+Creates comprehensive test suites:
 
 - **Unit Tests**: Individual function and class tests
-- **Integration Tests**: End-to-end workflow tests
-- **Test Cases**: Multiple scenarios including edge cases
-- **Framework Support**: Jest, Mocha, Vitest
-- **Test Runner**: Automated test execution scripts
+- **Test Infrastructure Setup**: Automatically configures testing frameworks
+- **Framework Support**: Jest
+- **Coverage Reports**: Generates test coverage analysis
 
-**Output**: Test files, configuration, and runner scripts.
+**Output**: Complete test files, framework configuration, and coverage setup.
 
 ## Configuration
 
@@ -302,20 +268,21 @@ To use this template with any repository:
 cd /path/to/your/project
 
 # Run analysis
-npx /path/to/gemini-ai-template/dist/cli.js all ./
+steelheart analyze
 ```
 
 ### Method 2: NPM Package
 
 ```bash
 # Install as a dependency
-npm install /path/to/gemini-ai-template
+npm install steelheart-ai
 
 # Use in your project
-import { analyzeRepository } from 'gemini-ai-template';
+import { analyzeRepository } from 'steelheart-ai';
 ```
 
 ### Method 3: CI/CD Integration
+
 See at [**CI/CD Integration**](GITHUB-ACTIONS-GUIDE.md).
 
 ## Supported Technologies
@@ -350,7 +317,7 @@ The template automatically detects and works with:
 
 ## License
 
-Steelheart team. 
+Steelheart team.
 
 ## Troubleshooting
 
@@ -362,7 +329,7 @@ Steelheart team.
 Error: OPENAI_API_KEY environment variable is required
 ```
 
-Solution: Run `npm run setup -- -k YOUR_API_KEY`
+Solution: Run `steelheart setup` and enter your API key
 
 **Invalid Repository Path**
 
@@ -384,7 +351,7 @@ Solution: Wait a few minutes or add credits to your OpenAI account
 
 - Check the [Issues](https://github.com/your-repo/issues) page
 - Review the [Configuration](#configuration) section
-- Verify your API key at [Google AI Studio](https://aistudio.google.com/apikey)
+- Verify your API key at [OpenAI API Keys](https://platform.openai.com/api-keys)
 
 ---
 
